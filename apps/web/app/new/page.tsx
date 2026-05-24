@@ -10,10 +10,10 @@ export default function NewPage() {
           className="text-[10px] smallcaps text-clay-700 hover:text-clay-900 transition-colors flex items-center gap-2"
         >
           <i className="fa-solid fa-arrow-left text-[9px]" />
-          Dada
+          云梦
         </Link>
         <span className="text-[10px] smallcaps text-clay-500">
-          Compose · a · world
+          编 织 一 个 世 界
         </span>
       </header>
 
@@ -21,23 +21,22 @@ export default function NewPage() {
         <div className="grid grid-cols-12 gap-8 md:gap-16 max-w-6xl">
           <div className="col-span-12 md:col-span-4 animate-fade-in">
             <p className="text-[10px] smallcaps text-clay-500 mb-6">
-              Ⅳ · Untitled
+              Ⅳ · 无 题
             </p>
             <h1 className="font-serif text-[44px] md:text-[64px] text-clay-900 leading-[0.96] mb-8">
-              Write
+              写下
               <br />
-              <em className="italic text-clay-600">two</em>
+              <em className="italic text-clay-600">两段</em>
               <br />
-              paragraphs.
+              文字。
             </h1>
             <div className="hairline w-12 mb-6" />
             <p className="font-serif text-base text-clay-700 leading-[1.7]">
-              The first sketches the world your story unfolds in. The second
-              describes how the world should look — its medium, its mood, its
-              grain.
+              第一段，勾勒故事所在的世界。第二段，描述世界应是什么模样 —
+              它的介质、氛围、颗粒感。
             </p>
             <p className="font-serif italic text-sm text-clay-500 mt-5 leading-relaxed">
-              Both fields accept any language. Specificity rewards specificity.
+              两栏皆可任意语言。越具体，回报越具体。
             </p>
           </div>
           <div className="col-span-12 md:col-span-7 md:col-start-6">

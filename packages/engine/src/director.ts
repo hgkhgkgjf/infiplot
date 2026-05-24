@@ -1,5 +1,5 @@
-import { chat } from "@dada/ai-client";
-import type { ProviderConfig, Session, StoryFrame, UIElement } from "@dada/types";
+import { chat } from "@yume/ai-client";
+import type { ProviderConfig, Session, StoryFrame, UIElement } from "@yume/types";
 import { parseJsonLoose } from "./jsonParser";
 import { DIRECTOR_SYSTEM, buildDirectorUserMessage } from "./prompts";
 

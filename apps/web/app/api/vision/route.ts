@@ -1,5 +1,5 @@
-import { visionTurn } from "@dada/engine";
-import type { VisionRequest } from "@dada/types";
+import { visionTurn } from "@yume/engine";
+import type { VisionRequest } from "@yume/types";
 import { NextResponse } from "next/server";
 import { loadEngineConfig } from "@/lib/config";
 

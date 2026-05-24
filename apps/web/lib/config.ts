@@ -1,4 +1,4 @@
-import type { EngineConfig } from "@dada/types";
+import type { EngineConfig } from "@yume/types";
 
 function readVar(name: string): string {
   const v = process.env[name];

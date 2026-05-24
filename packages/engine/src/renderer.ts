@@ -1,5 +1,5 @@
-import { generateImage } from "@dada/ai-client";
-import type { ProviderConfig, StoryFrame } from "@dada/types";
+import { generateImage } from "@yume/ai-client";
+import type { ProviderConfig, StoryFrame } from "@yume/types";
 import { buildImagePrompt } from "./prompts";
 
 export async function render(

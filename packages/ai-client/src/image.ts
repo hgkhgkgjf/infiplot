@@ -1,4 +1,4 @@
-import type { ProviderConfig } from "@dada/types";
+import type { ProviderConfig } from "@yume/types";
 import { fetchWithRetry } from "./fetchWithRetry";
 
 type ImageUrlPart = { type: string; image_url?: { url?: string } };

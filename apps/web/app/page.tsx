@@ -10,11 +10,11 @@ export default function LandingPage() {
       <header className="px-6 md:px-16 pt-7 md:pt-10 flex items-center justify-between">
         <div className="flex items-center gap-4">
           <span className="text-[10px] smallcaps text-clay-700 font-medium">
-            Dada
+            云梦
           </span>
           <span className="hairline w-10 hidden md:block" />
           <span className="text-[10px] smallcaps text-clay-500 hidden md:block">
-            Frame · by · Frame
+            逐 · 帧 · 而 · 成
           </span>
         </div>
         <nav className="flex items-center gap-5 text-[10px] smallcaps text-clay-600">
@@ -26,7 +26,7 @@ export default function LandingPage() {
           </a>
           <span className="text-clay-300">·</span>
           <a href="#about" className="hover:text-clay-900 transition-colors">
-            About
+            关于
           </a>
         </nav>
       </header>
@@ -35,20 +35,19 @@ export default function LandingPage() {
         <div className="grid grid-cols-12 gap-8">
           <div className="col-span-12 md:col-span-7 animate-fade-in">
             <p className="text-[10px] smallcaps text-clay-500 mb-8">
-              An open-source experiment · MMXXVI
+              一场 · 开源 · 实验 · MMXXVI
             </p>
             <h1 className="font-serif font-light text-[56px] md:text-[104px] leading-[0.94] text-clay-900 tracking-tight">
-              Every{" "}
-              <em className="italic font-light text-clay-600">frame</em>
+              每<em className="italic font-light text-clay-600">一帧</em>
               <br />
-              is painted on
+              都于
               <br />
-              <span className="text-ember-500 italic font-light">demand.</span>
+              <span className="text-ember-500 italic font-light">此刻</span>
+              诞生。
             </h1>
             <p className="mt-10 md:mt-14 max-w-md font-serif text-lg md:text-xl text-clay-700 leading-[1.65]">
-              Dada is a visual novel where the <em>entire</em> interface — scene,
-              dialogue, choices — is rendered by an AI, one frame at a time. You
-              click. It paints. The story unfolds.
+              云梦是一部视觉小说 — 场景、对话、选项，<em>整个</em>界面皆由 AI
+              一帧一帧绘成。你点击。它落笔。故事铺展。
             </p>
           </div>
 
@@ -56,13 +55,13 @@ export default function LandingPage() {
             <div className="space-y-3">
               <div className="hairline w-12" />
               <p className="font-serif italic text-clay-600 text-base md:text-[17px] leading-relaxed max-w-[280px]">
-                &ldquo;It is impossible to step into the same river twice.
+                &ldquo;人不能两次踏入同一条河流。
               </p>
               <p className="font-serif italic text-clay-600 text-base md:text-[17px] leading-relaxed max-w-[280px]">
-                It is impossible to play the same Dada twice.&rdquo;
+                你也不会两次走进同一个云梦。&rdquo;
               </p>
               <p className="text-[10px] smallcaps text-clay-500 pt-2">
-                — README · v0.1
+                — 自述 · v0.1
               </p>
             </div>
           </aside>
@@ -76,10 +75,10 @@ export default function LandingPage() {
       <section className="px-6 md:px-16 pt-14 md:pt-20 pb-16 md:pb-24">
         <div className="flex items-baseline justify-between mb-8 md:mb-10">
           <h2 className="text-[10px] smallcaps text-clay-700 font-medium">
-            Four Doors
+            四 扇 门
           </h2>
           <p className="text-[10px] smallcaps text-clay-500 hidden md:block">
-            Choose a world · or compose your own
+            择 一 世 界 · 或 自 行 编 织
           </p>
         </div>
 
@@ -98,14 +97,14 @@ export default function LandingPage() {
               </span>
               <div className="flex-1 min-w-0">
                 <h3 className="font-serif text-3xl md:text-4xl text-clay-900 leading-tight mb-2.5">
-                  Untitled
+                  无 题
                 </h3>
                 <p className="text-sm text-clay-600 leading-relaxed max-w-md">
-                  Bring your own world. Describe it in your own words.
+                  带来你自己的世界。用你自己的话讲述它。
                 </p>
               </div>
               <span className="hidden md:flex items-center gap-3 text-[10px] tracking-[0.4em] text-clay-400 group-hover:text-ember-500 transition-colors duration-500 shrink-0 self-center">
-                COMPOSE
+                编 织
                 <span className="w-7 h-px bg-current transition-all duration-500 group-hover:w-12" />
               </span>
             </div>
@@ -119,30 +118,28 @@ export default function LandingPage() {
       >
         <div className="col-span-12 md:col-span-3">
           <p className="text-[10px] smallcaps text-clay-500 mb-3">
-            Colophon · I
+            题 跋 · I
           </p>
           <p className="font-serif italic text-clay-700 text-base leading-relaxed">
-            A small open-source experiment in generative narrative. Self-host on
-            Vercel in a single click.
+            一场关于生成式叙事的小型开源实验。一键 Vercel 自建。
           </p>
         </div>
         <div className="col-span-12 md:col-span-3 md:col-start-5">
           <p className="text-[10px] smallcaps text-clay-500 mb-3">
-            Colophon · II
+            题 跋 · II
           </p>
           <ul className="font-serif text-clay-700 text-base leading-relaxed space-y-1">
-            <li>Story · large language model</li>
-            <li>Image · generative renderer</li>
-            <li>Click · vision interpreter</li>
+            <li>文 · 大语言模型</li>
+            <li>图 · 生成式渲染</li>
+            <li>感知 · 视觉解读</li>
           </ul>
         </div>
         <div className="col-span-12 md:col-span-3 md:col-start-9">
           <p className="text-[10px] smallcaps text-clay-500 mb-3">
-            Colophon · III
+            题 跋 · III
           </p>
           <p className="font-serif italic text-clay-700 text-base leading-relaxed">
-            All three are configured separately — bring any OpenAI-compatible
-            endpoint.
+            三者各自独立配置 — 任何 OpenAI 兼容端点皆可。
           </p>
         </div>
       </section>

@@ -19,7 +19,7 @@ export function CustomForm() {
     if (!canSubmit) return;
     setSubmitting(true);
     sessionStorage.setItem(
-      "dada:custom",
+      "yume:custom",
       JSON.stringify({ worldSetting, styleGuide }),
     );
     router.push("/play?custom=1");
@@ -64,7 +64,7 @@ export function CustomForm() {
           value={styleGuide}
           onChange={(e) => setStyleGuide(e.target.value)}
           rows={4}
-          placeholder="例：Soft watercolor, warm afternoon light, anime visual novel style, classic dialogue panel⋯"
+          placeholder="例：水彩柔光，午后暖意，动漫视觉小说画风，传统对话面板⋯"
           className="w-full bg-transparent border-0 border-b border-clay-900/20 px-0 py-3 text-clay-900 font-serif text-lg leading-[1.7] focus:outline-none focus:border-clay-700 transition-colors resize-none placeholder:font-serif placeholder:italic placeholder:text-base placeholder:leading-[1.7]"
         />
       </div>
@@ -72,17 +72,17 @@ export function CustomForm() {
       <div className="pt-6 flex items-center justify-between">
         <span className="text-[10px] smallcaps text-clay-500">
           {submitting
-            ? "Summoning the first frame…"
+            ? "正在唤起第一帧…"
             : canSubmit
-              ? "Ready when you are"
-              : "Two paragraphs · enough to begin"}
+              ? "准 · 备 · 就 · 绪"
+              : "两 · 段 · 即 · 可 · 开 · 场"}
         </span>
         <button
           type="submit"
           disabled={!canSubmit}
           className="group flex items-center gap-3 text-[10px] smallcaps text-clay-900 disabled:text-clay-300 disabled:cursor-not-allowed enabled:hover:text-ember-500 transition-colors duration-300"
         >
-          Begin
+          开 始
           <span className="w-10 h-px bg-current transition-all duration-300 group-enabled:group-hover:w-16" />
           <i className="fa-solid fa-arrow-right text-[9px]" />
         </button>

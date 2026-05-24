@@ -1,17 +1,17 @@
 {
-  "name": "dada",
+  "name": "yume",
   "version": "0.1.0",
   "private": true,
-  "description": "AI-driven visual novel",
+  "description": "AI 驱动的视觉小说（云梦）",
   "license": "UNLICENSED",
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --filter @dada/web dev",
-    "build": "pnpm --filter @dada/web build",
-    "start": "pnpm --filter @dada/web start",
+    "dev": "pnpm --filter @yume/web dev",
+    "build": "pnpm --filter @yume/web build",
+    "start": "pnpm --filter @yume/web start",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   },

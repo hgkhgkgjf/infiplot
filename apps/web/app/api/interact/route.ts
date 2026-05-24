@@ -1,5 +1,5 @@
-import { takeTurn } from "@dada/engine";
-import type { InteractRequest } from "@dada/types";
+import { takeTurn } from "@yume/engine";
+import type { InteractRequest } from "@yume/types";
 import { NextResponse } from "next/server";
 import { loadEngineConfig } from "@/lib/config";
 

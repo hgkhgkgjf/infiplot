@@ -1,5 +1,5 @@
-import { interpretClick } from "@dada/ai-client";
-import type { ClickIntent, ProviderConfig, UIElement } from "@dada/types";
+import { interpretClick } from "@yume/ai-client";
+import type { ClickIntent, ProviderConfig, UIElement } from "@yume/types";
 import { parseJsonLoose } from "./jsonParser";
 import { VISION_SYSTEM_PROMPT, buildVisionUserPrompt } from "./prompts";
 

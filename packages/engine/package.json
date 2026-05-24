@@ -1,5 +1,5 @@
 {
-  "name": "@dada/engine",
+  "name": "@yume/engine",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,8 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@dada/ai-client": "workspace:*",
-    "@dada/types": "workspace:*",
+    "@yume/ai-client": "workspace:*",
+    "@yume/types": "workspace:*",
     "sharp": "^0.33.5"
   }
 }

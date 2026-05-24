@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   reactStrictMode: true,
   typedRoutes: false,
-  transpilePackages: ["@dada/engine", "@dada/ai-client", "@dada/types"],
+  transpilePackages: ["@yume/engine", "@yume/ai-client", "@yume/types"],
   serverExternalPackages: ["sharp"],
   turbopack: {
     root: path.join(__dirname, "..", ".."),

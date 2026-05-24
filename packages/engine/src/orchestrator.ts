@@ -8,7 +8,7 @@ import type {
   StartResponse,
   VisionRequest,
   VisionResponse,
-} from "@dada/types";
+} from "@yume/types";
 import { annotateClick } from "./annotate";
 import { direct } from "./director";
 import { render } from "./renderer";

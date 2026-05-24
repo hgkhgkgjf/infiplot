@@ -12,7 +12,7 @@ import type {
   StartResponse,
   StoryFrame,
   VisionResponse,
-} from "@dada/types";
+} from "@yume/types";
 
 function PlayInner() {
   const router = useRouter();
@@ -47,7 +47,7 @@ function PlayInner() {
         payload = { worldSetting: p.worldSetting, styleGuide: p.styleGuide };
       }
     } else if (params.get("custom") === "1") {
-      const stored = sessionStorage.getItem("dada:custom");
+      const stored = sessionStorage.getItem("yume:custom");
       if (stored) {
         try {
           payload = JSON.parse(stored);
@@ -224,7 +224,7 @@ function PlayInner() {
       <div className="min-h-screen flex flex-col items-center justify-center px-8">
         <div className="max-w-md text-center animate-fade-in">
           <p className="text-[10px] smallcaps text-clay-500 mb-6">
-            An · error · occurred
+            出 · 了 · 点 · 状 · 况
           </p>
           <p className="font-serif italic text-clay-900 text-lg leading-[1.7] mb-10">
             {error}
@@ -234,7 +234,7 @@ function PlayInner() {
             className="text-[10px] smallcaps text-clay-700 hover:text-ember-500 transition-colors inline-flex items-center gap-3"
           >
             <i className="fa-solid fa-arrow-left text-[9px]" />
-            Return
+            返 回
           </Link>
         </div>
       </div>
@@ -249,10 +249,10 @@ function PlayInner() {
           className="text-[10px] smallcaps text-clay-600 hover:text-clay-900 transition-colors flex items-center gap-2"
         >
           <i className="fa-solid fa-arrow-left text-[9px]" />
-          Dada
+          云梦
         </Link>
         <div className="flex items-center gap-3 text-[10px] smallcaps text-clay-500 num">
-          <span>Frame · {String(turnNum).padStart(3, "0")}</span>
+          <span>第 · {String(turnNum).padStart(3, "0")} · 帧</span>
           <span className="text-clay-300">·</span>
           <span className="hidden sm:inline truncate max-w-[180px]">
             {session?.id.slice(2, 14) ?? "—"}
@@ -271,30 +271,30 @@ function PlayInner() {
         <div className="mt-7 md:mt-9 max-w-md w-full text-center min-h-[64px] flex items-center justify-center">
           {phase === "loading-first" && (
             <p className="text-[10px] smallcaps text-clay-500 animate-slow-pulse">
-              Summoning · the · first · frame
+              正 · 在 · 唤 · 起 · 第 · 一 · 帧
             </p>
           )}
           {phase === "interacting" && (
             <div className="flex flex-col items-center gap-2 animate-fade-in">
               <p className="text-[10px] smallcaps text-clay-500 animate-slow-pulse">
-                AI · is · painting · the · next · moment
+                AI · 正 · 在 · 描 · 画 · 下 · 一 · 刻
               </p>
               <p className="font-serif italic text-clay-400 text-xs">
-                cached choices resolve in seconds · free-form takes longer
+                预取选项秒级响应 · 自由点击稍候
               </p>
             </div>
           )}
           {phase === "ready" && intent?.targetLabel && (
             <p className="font-serif italic text-clay-500 text-base leading-relaxed animate-fade-in max-w-[320px]">
               <span className="text-[9px] smallcaps not-italic text-clay-400 mr-2 align-middle">
-                Last · move ·
+                上 · 一 · 步 ·
               </span>
               <span className="align-middle">{intent.targetLabel}</span>
             </p>
           )}
           {phase === "ready" && !intent && turnNum > 0 && (
             <p className="text-[10px] smallcaps text-clay-400 animate-fade-in">
-              Click · anywhere · to · respond
+              点 · 击 · 任 · 意 · 处 · 回 · 应
             </p>
           )}
         </div>
@@ -315,7 +315,7 @@ export default function PlayPage() {
       fallback={
         <div className="min-h-screen flex items-center justify-center">
           <span className="text-[10px] smallcaps text-clay-500 animate-slow-pulse">
-            Loading
+            载入中
           </span>
         </div>
       }

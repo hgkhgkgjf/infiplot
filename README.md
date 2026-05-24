@@ -1,4 +1,4 @@
-# Dada
+# 云梦
 
 > An AI-driven visual novel where every frame — scenes, dialogue, choices — is rendered by an AI, one frame at a time. You click. It paints. The story unfolds.
 
@@ -31,7 +31,7 @@ There is no traditional UI. There is only the image. The AI chooses the layout, 
 
 ## One-click deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/dada&env=TEXT_BASE_URL,TEXT_API_KEY,TEXT_MODEL,IMAGE_BASE_URL,IMAGE_API_KEY,IMAGE_MODEL,VISION_BASE_URL,VISION_API_KEY,VISION_MODEL&envDescription=Three%20independently%20configurable%20providers.%20Any%20OpenAI-compatible%20endpoint%20works.&envLink=https://github.com/YOUR_USERNAME/dada%23environment-variables)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/yume&env=TEXT_BASE_URL,TEXT_API_KEY,TEXT_MODEL,IMAGE_BASE_URL,IMAGE_API_KEY,IMAGE_MODEL,VISION_BASE_URL,VISION_API_KEY,VISION_MODEL&envDescription=Three%20independently%20configurable%20providers.%20Any%20OpenAI-compatible%20endpoint%20works.&envLink=https://github.com/YOUR_USERNAME/yume%23environment-variables)
 
 After deploy, set the nine environment variables (see below) in your Vercel project. That's it.
 
@@ -68,7 +68,7 @@ pnpm dev
 ## Project layout
 
 ```
-dada/
+yume/
 ├── apps/web/              Next.js 16 app — pages + API routes
 └── packages/
     ├── types/             shared TypeScript types

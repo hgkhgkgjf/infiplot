@@ -1,4 +1,4 @@
-import type { Session, StoryFrame, UIElement } from "@dada/types";
+import type { Session, StoryFrame, UIElement } from "@yume/types";
 
 export const DIRECTOR_SYSTEM = `你是一个交互视觉小说的编剧导演。每次根据世界观、画风和历史，输出当前画面要呈现的内容。
 

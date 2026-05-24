@@ -71,7 +71,7 @@ export function PlayCanvas({
                   width: 30,
                   height: 30,
                   animation:
-                    "dada-ripple 1.6s cubic-bezier(0.16,1,0.3,1) infinite",
+                    "yume-ripple 1.6s cubic-bezier(0.16,1,0.3,1) infinite",
                 }}
               />
               <div
@@ -100,7 +100,7 @@ export function PlayCanvas({
         >
           <div className="w-1.5 h-1.5 bg-clay-500 rounded-full animate-slow-pulse" />
           <p className="text-[9px] smallcaps text-clay-500 animate-slow-pulse">
-            Painting · the · first · frame
+            正 · 在 · 绘 · 制 · 第 · 一 · 帧
           </p>
         </div>
       )}
@@ -113,7 +113,7 @@ export function PlayCanvas({
           {dims ? `${dims.w} × ${dims.h} · png` : "—"}
         </span>
         <span className="text-[9px] smallcaps text-clay-400">
-          {phase === "ready" ? "Tap · anywhere" : "···"}
+          {phase === "ready" ? "任 · 意 · 点 · 击" : "···"}
         </span>
       </div>
     </div>
