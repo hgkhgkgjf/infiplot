@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { PlayCanvas, type Phase } from "@/components/PlayCanvas";
 import { PRESETS } from "@/lib/presets";
 import type {
@@ -29,10 +29,58 @@ function PlayInner() {
   } | null>(null);
   const [turnNum, setTurnNum] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [presentation, setPresentation] = useState(false);
 
   const startedRef = useRef(false);
   const prefetchAbortRef = useRef<AbortController | null>(null);
   const prefetchRef = useRef<Record<string, Promise<InteractResponse>>>({});
+
+  const togglePresentation = useCallback(async () => {
+    const entering = !presentation;
+    if (entering) {
+      try {
+        if (!document.fullscreenElement) {
+          await document.documentElement.requestFullscreen();
+        }
+      } catch {
+        // Browser may refuse fullscreen — still enter chrome-less mode
+      }
+      setPresentation(true);
+    } else {
+      try {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        }
+      } catch {
+        // ignore
+      }
+      setPresentation(false);
+    }
+  }, [presentation]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "f" || e.key === "F") {
+        if (e.metaKey || e.ctrlKey || e.altKey) return;
+        e.preventDefault();
+        void togglePresentation();
+      } else if (e.key === "Escape" && presentation) {
+        setPresentation(false);
+      }
+    }
+    function onFullscreenChange() {
+      // Sync if user exited browser fullscreen via Esc / system gesture
+      if (!document.fullscreenElement && presentation) {
+        setPresentation(false);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+    };
+  }, [togglePresentation, presentation]);
 
   useEffect(() => {
     if (startedRef.current) return;
@@ -241,6 +289,20 @@ function PlayInner() {
     );
   }
 
+  if (presentation) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center z-50">
+        <PlayCanvas
+          imageBase64={imageBase64}
+          phase={phase}
+          pendingClick={pendingClick}
+          onClick={handleClick}
+          fullViewport
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="px-5 md:px-12 pt-6 md:pt-8 flex items-center justify-between">
@@ -300,10 +362,18 @@ function PlayInner() {
         </div>
       </main>
 
-      <footer className="px-5 md:px-12 pb-6">
-        <div className="text-[9px] smallcaps text-clay-400 text-center num">
-          Ⅰ · Ⅰ
-        </div>
+      <footer className="px-5 md:px-12 pb-6 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => void togglePresentation()}
+          className="text-[9px] smallcaps text-clay-400 hover:text-clay-700 transition-colors flex items-center gap-2"
+          aria-label="进入演示模式"
+        >
+          <i className="fa-solid fa-expand text-[10px]" />
+          F · 演 · 示
+        </button>
+        <div className="text-[9px] smallcaps text-clay-400 num">Ⅰ · Ⅰ</div>
+        <span className="text-[9px] w-[60px]" aria-hidden />
       </footer>
     </div>
   );

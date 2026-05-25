@@ -20,6 +20,7 @@ export async function generateImage(
   const body = {
     model: config.model,
     modalities: ["image", "text"],
+    size: "1792x1024",
     messages: [{ role: "user", content: prompt }],
   };
 

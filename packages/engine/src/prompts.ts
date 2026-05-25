@@ -65,31 +65,32 @@ export function buildImagePrompt(
     .map((e) => `- ${e.kind}: ${e.label}`)
     .join("\n");
 
-  return `Generate a vertical 9:16 visual novel UI screen.
+  return `Generate a landscape 16:9 cinematic visual novel UI screen, widescreen format (1792x1024 or equivalent).
 
 ART STYLE: ${styleGuide}
 (Match this style consistently — for the scene art AND the UI elements.
 For example: anime → traditional galgame dialogue box; cyberpunk → neon HUD;
 stick figure → hand-drawn paper UI; cinematic realism → minimalist film overlay.)
 
-SCENE (occupies the upper portion of the image):
+SCENE (fills the entire 16:9 canvas as a cinematic widescreen background):
 ${frame.scenePrompt}
 
-DIALOGUE PANEL (semi-transparent, lower-middle area):
-${frame.speaker ? `Speaker name displayed prominently: "${frame.speaker}"` : "Narration only — no speaker tag."}
+DIALOGUE PANEL (cinematic bottom band, semi-transparent, spans full width, occupies the lower ~25% of the frame):
+${frame.speaker ? `Speaker name displayed prominently above the dialogue text: "${frame.speaker}"` : "Narration only — no speaker tag."}
 ${frame.line ? `Dialogue text: "${frame.line}"` : ""}
 ${frame.narration ? `Narration text (italic if speaker also present): "${frame.narration}"` : ""}
 
-CHOICE PANEL (bottom area, three clearly tappable buttons stacked or arranged):
+CHOICE PANEL (three clearly tappable buttons, arranged HORIZONTALLY in a row across the lower-third of the frame, ABOVE or overlaid on the dialogue band; equally sized; centered in the safe zone of the 16:9 canvas):
 ${choiceList}
 ${extraUI ? `\nADDITIONAL UI ELEMENTS:\n${extraUI}` : ""}
 
 CRITICAL LAYOUT REQUIREMENTS:
-- All text must be perfectly legible (high contrast, readable size)
-- Choice buttons must be clearly distinguishable as interactive elements
-- Choice text must NOT be cropped, NOT overlap with character faces
-- The image is the entire interface — no external chrome will be added
-- Choices appear in the order listed above`;
+- 16:9 LANDSCAPE orientation — wider than tall. Do NOT produce a portrait/square image.
+- All text and buttons must be inside the central safe zone (avoid the outer 8% on every side), so the viewport can letterbox without cropping any UI.
+- All text must be perfectly legible (high contrast, readable size).
+- Choice buttons must be clearly distinguishable as interactive elements, arranged horizontally left-to-right in the order listed above.
+- Choice text must NOT be cropped, NOT overlap with character faces or the dialogue panel.
+- The image is the entire interface — no external chrome will be added.`;
 }
 
 export const VISION_SYSTEM_PROMPT = `你是视觉理解助手。用户在视觉小说界面上点击了红色圆点位置，你要根据红点位置和图中可见的 UI 元素，判断用户的意图。

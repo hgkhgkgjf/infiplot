@@ -12,11 +12,13 @@ export function PlayCanvas({
   phase,
   pendingClick,
   onClick,
+  fullViewport = false,
 }: {
   imageBase64: string | null;
   phase: Phase;
   pendingClick: { x: number; y: number } | null;
   onClick: (click: { x: number; y: number }) => void;
+  fullViewport?: boolean;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
@@ -35,10 +37,26 @@ export function PlayCanvas({
   const interactive = phase === "ready" && !!imageBase64;
   const dimmed = phase === "interacting";
 
+  // 16:9 sizing — letterbox into available viewport
+  const sizeStyle = fullViewport
+    ? { maxWidth: "100vw", maxHeight: "100dvh" }
+    : { maxWidth: "96vw", maxHeight: "calc(100dvh - 280px)" };
+
+  // Placeholder needs an explicit width for aspect-video to compute height.
+  // Pick the largest 16:9 box that fits in the available viewport.
+  const placeholderWidth = fullViewport
+    ? "min(100vw, calc(100dvh * 16 / 9))"
+    : "min(96vw, calc((100dvh - 280px) * 16 / 9))";
+
   return (
-    <div className="w-full flex flex-col items-center">
+    <div
+      className={`flex flex-col items-center ${fullViewport ? "w-full h-full justify-center" : "w-full"}`}
+    >
       {imageBase64 ? (
-        <div className="relative inline-block" style={{ boxShadow: SHADOW }}>
+        <div
+          className="relative inline-block"
+          style={{ boxShadow: fullViewport ? "none" : SHADOW }}
+        >
           <img
             key={imageBase64.slice(-48)}
             ref={imgRef}
@@ -51,14 +69,15 @@ export function PlayCanvas({
             }}
             draggable={false}
             className={`block w-auto h-auto select-none animate-fade-in transition-opacity duration-700 ease-out ${interactive ? "cursor-pointer" : "cursor-wait"} ${dimmed ? "opacity-30" : "opacity-100"}`}
-            style={{
-              maxWidth: "min(560px, 92vw)",
-              maxHeight: "calc(100dvh - 200px)",
-            }}
+            style={sizeStyle}
           />
 
-          <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-clay-900/12 to-transparent pointer-events-none" />
-          <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-clay-900/12 to-transparent pointer-events-none" />
+          {!fullViewport && (
+            <>
+              <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-clay-900/12 to-transparent pointer-events-none" />
+              <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-clay-900/12 to-transparent pointer-events-none" />
+            </>
+          )}
 
           {pendingClick && (
             <>
@@ -92,10 +111,10 @@ export function PlayCanvas({
         </div>
       ) : (
         <div
-          className="relative aspect-[2/3] bg-cream-200 flex flex-col items-center justify-center gap-4"
+          className="relative aspect-video bg-cream-200 flex flex-col items-center justify-center gap-4"
           style={{
-            width: "min(560px, calc((100dvh - 200px) * 2 / 3), 92vw)",
-            boxShadow: SHADOW,
+            width: placeholderWidth,
+            boxShadow: fullViewport ? "none" : SHADOW,
           }}
         >
           <div className="w-1.5 h-1.5 bg-clay-500 rounded-full animate-slow-pulse" />
@@ -105,17 +124,19 @@ export function PlayCanvas({
         </div>
       )}
 
-      <div
-        className="flex items-center justify-between mt-3 px-1 w-full"
-        style={{ maxWidth: "min(560px, 92vw)" }}
-      >
-        <span className="text-[9px] smallcaps text-clay-400 num">
-          {dims ? `${dims.w} × ${dims.h} · png` : "—"}
-        </span>
-        <span className="text-[9px] smallcaps text-clay-400">
-          {phase === "ready" ? "任 · 意 · 点 · 击" : "···"}
-        </span>
-      </div>
+      {!fullViewport && (
+        <div
+          className="flex items-center justify-between mt-3 px-1 w-full"
+          style={{ maxWidth: "96vw" }}
+        >
+          <span className="text-[9px] smallcaps text-clay-400 num">
+            {dims ? `${dims.w} × ${dims.h} · png` : "—"}
+          </span>
+          <span className="text-[9px] smallcaps text-clay-400">
+            {phase === "ready" ? "任 · 意 · 点 · 击" : "···"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
