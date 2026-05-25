@@ -1,4 +1,5 @@
-import type { Session, StoryFrame, UIElement } from "@yume/types";
+import type { Character, Session, StoryFrame, UIElement } from "@yume/types";
+
 
 export const DIRECTOR_SYSTEM = `你是一个交互视觉小说的编剧导演。每次根据世界观、画风和历史，输出当前画面要呈现的内容。
 
@@ -19,7 +20,7 @@ export const DIRECTOR_SYSTEM = `你是一个交互视觉小说的编剧导演。
 - narration / line 中文，scenePrompt 英文
 - 默认 3 个 choice 元素，可以根据情境额外加 menu/item/custom（罕见）
 - 选项必须能切实推进剧情，且互不重复
-- scenePrompt 描述当前的画面，不要包括 UI 元素，UI 元素会另外渲染
+- scenePrompt 描述当前的画面，不要包括 UI 元素
 - 单帧旁白与台词加起来控制在 80 字以内
 - 不要输出 JSON 以外的任何文本`;
 
@@ -55,43 +56,24 @@ export function buildImagePrompt(
   frame: StoryFrame,
   styleGuide: string,
 ): string {
-  const choiceList = frame.uiElements
-    .filter((e) => e.kind === "choice")
-    .map((e, i) => `${i + 1}. ${e.label}`)
-    .join("\n");
-
-  const extraUI = frame.uiElements
-    .filter((e) => e.kind !== "choice")
-    .map((e) => `- ${e.kind}: ${e.label}`)
-    .join("\n");
-
-  return `Generate a landscape 16:9 cinematic visual novel UI screen, widescreen format (1792x1024 or equivalent).
+  return `Generate a cinematic landscape background illustration, 16:9 widescreen (1792x1024).
 
 ART STYLE: ${styleGuide}
-(Match this style consistently — for the scene art AND the UI elements.
-For example: anime → traditional galgame dialogue box; cyberpunk → neon HUD;
-stick figure → hand-drawn paper UI; cinematic realism → minimalist film overlay.)
 
-SCENE (fills the entire 16:9 canvas as a cinematic widescreen background):
+SCENE (fill the ENTIRE canvas — no UI elements, no text overlays):
 ${frame.scenePrompt}
 
-DIALOGUE PANEL (cinematic bottom band, semi-transparent, spans full width, occupies the lower ~25% of the frame):
-${frame.speaker ? `Speaker name displayed prominently above the dialogue text: "${frame.speaker}"` : "Narration only — no speaker tag."}
-${frame.line ? `Dialogue text: "${frame.line}"` : ""}
-${frame.narration ? `Narration text (italic if speaker also present): "${frame.narration}"` : ""}
-
-CHOICE PANEL (three clearly tappable buttons, arranged HORIZONTALLY in a row across the lower-third of the frame, ABOVE or overlaid on the dialogue band; equally sized; centered in the safe zone of the 16:9 canvas):
-${choiceList}
-${extraUI ? `\nADDITIONAL UI ELEMENTS:\n${extraUI}` : ""}
-
-CRITICAL LAYOUT REQUIREMENTS:
-- 16:9 LANDSCAPE orientation — wider than tall. Do NOT produce a portrait/square image.
-- All text and buttons must be inside the central safe zone (avoid the outer 8% on every side), so the viewport can letterbox without cropping any UI.
-- All text must be perfectly legible (high contrast, readable size).
-- Choice buttons must be clearly distinguishable as interactive elements, arranged horizontally left-to-right in the order listed above.
-- Choice text must NOT be cropped, NOT overlap with character faces or the dialogue panel.
-- The image is the entire interface — no external chrome will be added.`;
+STRICT RULES — NEVER violate these:
+- DO NOT draw any dialogue boxes, speech bubbles, text panels, or any rectangular overlay.
+- DO NOT draw any buttons, choice options, menu items, or interactive UI elements.
+- DO NOT render any Chinese or English text anywhere in the image.
+- DO NOT add any HUD, interface chrome, or game UI elements.
+- The image is a PURE BACKGROUND SCENE ONLY. All UI will be added as HTML on top.
+- 16:9 LANDSCAPE orientation — wider than tall. No portrait or square output.
+- Leave the bottom 35% of the frame relatively uncluttered (darker or softer) so overlaid UI panels remain readable.
+- Characters or key scene elements should be positioned in the upper 65% of the frame.`;
 }
+
 
 export const VISION_SYSTEM_PROMPT = `你是视觉理解助手。用户在视觉小说界面上点击了红色圆点位置，你要根据红点位置和图中可见的 UI 元素，判断用户的意图。
 

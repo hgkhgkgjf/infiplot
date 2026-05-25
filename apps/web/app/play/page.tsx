@@ -131,6 +131,7 @@ function PlayInner() {
           worldSetting: finalPayload.worldSetting,
           styleGuide: finalPayload.styleGuide,
           history: [{ frame: data.frame }],
+          characters: [],
         });
         setFrame(data.frame);
         setImageBase64(data.imageBase64);
@@ -183,6 +184,82 @@ function PlayInner() {
     };
   }, [frame?.id, session?.id]);
 
+  // ── Shared result applier ────────────────────────────────────────────
+  async function applyInteractResult(
+    resultPromise: Promise<InteractResponse>,
+    clickIntent: ClickIntent,
+    click?: { x: number; y: number },
+  ) {
+    const result = await resultPromise;
+    // Overwrite synthetic prefetch intent with the real click intent
+    const lastIdx = result.session.history.length - 1;
+    const patched: InteractResponse = {
+      ...result,
+      intent: clickIntent,
+      session: {
+        ...result.session,
+        history: result.session.history.map((entry, idx) =>
+          idx === lastIdx ? { ...entry, click, intent: clickIntent } : entry,
+        ),
+      },
+    };
+    const updatedHistory = [
+      ...patched.session.history,
+      { frame: patched.frame },
+    ];
+    setSession({ ...patched.session, history: updatedHistory });
+    setFrame(patched.frame);
+    setImageBase64(patched.imageBase64);
+    setIntent(clickIntent);
+    setPendingClick(null);
+    setTurnNum((t) => t + 1);
+    setPhase("ready");
+  }
+
+  // ── HTML button click — bypasses Vision entirely ──────────────────────
+  async function handleChoiceSelect(choiceId: string, label: string) {
+    if (phase !== "ready" || !session) return;
+    setPhase("interacting");
+    setIntent(null);
+
+    const clickIntent: ClickIntent = {
+      targetId: choiceId,
+      targetLabel: label,
+      reasoning: "direct-button-click",
+    };
+
+    const cacheSnapshot = prefetchRef.current;
+    const cached = cacheSnapshot[choiceId];
+
+    try {
+      if (cached) {
+        // Cache hit — zero extra wait
+        await applyInteractResult(cached, clickIntent);
+      } else {
+        // Cache miss — call interact directly (no Vision roundtrip)
+        prefetchAbortRef.current?.abort();
+        const res = await fetch("/api/interact", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session, intent: clickIntent }),
+        });
+        if (!res.ok) {
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? res.statusText);
+        }
+        await applyInteractResult(
+          res.json() as Promise<InteractResponse>,
+          clickIntent,
+        );
+      }
+    } catch (e) {
+      setError(String(e));
+      setPendingClick(null);
+      setPhase("ready");
+    }
+  }
+
+  // ── Background / free-form click — still uses Vision ─────────────────
   async function handleClick(click: { x: number; y: number }) {
     if (phase !== "ready" || !session || !imageBase64) return;
     setPhase("interacting");
@@ -192,15 +269,10 @@ function PlayInner() {
     const cacheSnapshot = prefetchRef.current;
 
     try {
-      // Step 1: Vision (~4s) — figure out what the user actually clicked
       const visionRes = await fetch("/api/vision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session,
-          prevImageBase64: imageBase64,
-          click,
-        }),
+        body: JSON.stringify({ session, prevImageBase64: imageBase64, click }),
       });
       if (!visionRes.ok) {
         const j = (await visionRes.json().catch(() => ({}))) as {
@@ -211,31 +283,13 @@ function PlayInner() {
       const { intent: clickIntent } =
         (await visionRes.json()) as VisionResponse;
 
-      // Step 2: Cache lookup
       const cached = clickIntent.targetId
         ? cacheSnapshot[clickIntent.targetId]
         : undefined;
 
-      let result: InteractResponse;
       if (cached) {
-        // Cache hit — await the prefetched promise (mostly already resolved)
-        result = await cached;
-        // Overwrite the synthetic prefetch intent on history with the real one
-        const lastIdx = result.session.history.length - 1;
-        result = {
-          ...result,
-          intent: clickIntent,
-          session: {
-            ...result.session,
-            history: result.session.history.map((entry, idx) =>
-              idx === lastIdx
-                ? { ...entry, click, intent: clickIntent }
-                : entry,
-            ),
-          },
-        };
+        await applyInteractResult(cached, clickIntent, click);
       } else {
-        // Cache miss (free-form click) — abort wasted prefetches, run live
         prefetchAbortRef.current?.abort();
         const liveRes = await fetch("/api/interact", {
           method: "POST",
@@ -248,18 +302,12 @@ function PlayInner() {
           };
           throw new Error(j.error ?? liveRes.statusText);
         }
-        result = (await liveRes.json()) as InteractResponse;
+        await applyInteractResult(
+          liveRes.json() as Promise<InteractResponse>,
+          clickIntent,
+          click,
+        );
       }
-
-      // Apply the result: append new frame to history
-      const updatedHistory = [...result.session.history, { frame: result.frame }];
-      setSession({ ...result.session, history: updatedHistory });
-      setFrame(result.frame);
-      setImageBase64(result.imageBase64);
-      setIntent(clickIntent);
-      setPendingClick(null);
-      setTurnNum((t) => t + 1);
-      setPhase("ready");
     } catch (e) {
       setError(String(e));
       setPendingClick(null);
@@ -295,8 +343,10 @@ function PlayInner() {
         <PlayCanvas
           imageBase64={imageBase64}
           phase={phase}
+          frame={frame}
           pendingClick={pendingClick}
           onClick={handleClick}
+          onSelectChoice={handleChoiceSelect}
           fullViewport
         />
       </div>
@@ -326,37 +376,22 @@ function PlayInner() {
         <PlayCanvas
           imageBase64={imageBase64}
           phase={phase}
+          frame={frame}
           pendingClick={pendingClick}
           onClick={handleClick}
+          onSelectChoice={handleChoiceSelect}
         />
 
-        <div className="mt-7 md:mt-9 max-w-md w-full text-center min-h-[64px] flex items-center justify-center">
+        <div className="mt-4 max-w-md w-full text-center min-h-[28px] flex items-center justify-center">
           {phase === "loading-first" && (
             <p className="text-[10px] smallcaps text-clay-500 animate-slow-pulse">
               正 · 在 · 唤 · 起 · 第 · 一 · 帧
             </p>
           )}
-          {phase === "interacting" && (
-            <div className="flex flex-col items-center gap-2 animate-fade-in">
-              <p className="text-[10px] smallcaps text-clay-500 animate-slow-pulse">
-                AI · 正 · 在 · 描 · 画 · 下 · 一 · 刻
-              </p>
-              <p className="font-serif italic text-clay-400 text-xs">
-                预取选项秒级响应 · 自由点击稍候
-              </p>
-            </div>
-          )}
           {phase === "ready" && intent?.targetLabel && (
-            <p className="font-serif italic text-clay-500 text-base leading-relaxed animate-fade-in max-w-[320px]">
-              <span className="text-[9px] smallcaps not-italic text-clay-400 mr-2 align-middle">
-                上 · 一 · 步 ·
-              </span>
-              <span className="align-middle">{intent.targetLabel}</span>
-            </p>
-          )}
-          {phase === "ready" && !intent && turnNum > 0 && (
-            <p className="text-[10px] smallcaps text-clay-400 animate-fade-in">
-              点 · 击 · 任 · 意 · 处 · 回 · 应
+            <p className="text-[9px] smallcaps text-clay-400 animate-fade-in">
+              <span className="mr-2">上 · 一 · 步 ·</span>
+              <span className="text-clay-600">{intent.targetLabel}</span>
             </p>
           )}
         </div>
