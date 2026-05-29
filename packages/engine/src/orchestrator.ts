@@ -1,14 +1,12 @@
 import type {
   BeatAudioRequest,
   BeatAudioResponse,
-  Character,
   EngineConfig,
   InsertBeatRequest,
   InsertBeatResponse,
-  Scene,
+  Session,
   SceneRequest,
   SceneResponse,
-  Session,
   StartRequest,
   StartResponse,
   VisionRequest,
@@ -16,55 +14,24 @@ import type {
 } from "@yume/types";
 import { annotateClick } from "./annotate";
 import { directInsertBeat, directScene } from "./director";
-import { mockImageBase64 } from "./mockImage";
-import { render } from "./renderer";
+import { synthesizeBeat } from "./voice";
 import { interpret } from "./vision";
-import { provisionVoicesForScene, synthesizeBeat } from "./voice";
 
 function newSessionId(): string {
   return `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-// TEMP: per-phase timing for latency diagnosis. Remove after we have data.
 function tlog(label: string, t0: number): void {
   console.log(`${label}: ${Date.now() - t0}ms`);
 }
 
-// Merge new character entries into the registry by name. If a name already
-// exists we preserve the existing voice (so a description revision never
-// silently re-provisions a voice the player has already heard).
-function mergeCharacters(existing: Character[], updates: Character[]): Character[] {
-  if (updates.length === 0) return existing;
-  const byName = new Map(existing.map((c) => [c.name, c]));
-  for (const u of updates) {
-    const prev = byName.get(u.name);
-    byName.set(u.name, prev?.voice ? { ...u, voice: prev.voice } : u);
-  }
-  return Array.from(byName.values());
-}
-
-async function renderImage(
-  config: EngineConfig,
-  scene: Scene,
-  styleGuide: string,
-): Promise<string> {
-  if (config.mockImage) return mockImageBase64();
-  return render(config.image, scene, styleGuide);
-}
-
-async function provisionForScene(
-  config: EngineConfig,
-  session: Session,
-  scene: Scene,
-): Promise<{ characters: Character[] }> {
-  if (!config.tts) return { characters: session.characters };
-  return provisionVoicesForScene(config.tts, session, scene);
-}
-
 // ──────────────────────────────────────────────────────────────────────
-//  startSession — first scene + image + voice provisioning. The actual
-//  per-beat synth runs lazily via requestBeatAudio so MiMo's tail
-//  latency never blocks the UI.
+//  startSession — initial Scene via the multi-agent pipeline.
+//
+//  directScene internally handles: Writer → (CharacterDesigner+
+//  Cinematographer parallel) → Painter → upload. Voice provisioning and
+//  portrait generation happen inside CharacterDesigner per new character,
+//  so the orchestrator no longer needs to coordinate them separately.
 // ──────────────────────────────────────────────────────────────────────
 
 export async function startSession(
@@ -72,6 +39,7 @@ export async function startSession(
   req: StartRequest,
 ): Promise<StartResponse> {
   const tTotal = Date.now();
+
   const session: Session = {
     id: newSessionId(),
     createdAt: Date.now(),
@@ -81,42 +49,20 @@ export async function startSession(
     characters: [],
   };
 
-  const tDirect = Date.now();
-  const { scene, characterUpdates } = await directScene(config.text, session);
-  tlog("[start] directScene", tDirect);
-
-  const preVoiceSession: Session = {
-    ...session,
-    characters: mergeCharacters(session.characters, characterUpdates),
-  };
-
-  const tImage = Date.now();
-  const tProv = Date.now();
-  const imagePromise = renderImage(config, scene, preVoiceSession.styleGuide)
-    .then((r) => {
-      tlog("[start] renderImage", tImage);
-      return r;
-    });
-  const provPromise = provisionForScene(config, preVoiceSession, scene)
-    .then((r) => {
-      tlog("[start] provisionForScene", tProv);
-      return r;
-    });
-  const [imageBase64, provRes] = await Promise.all([imagePromise, provPromise]);
+  const { scene, sceneImageBase64, characters } = await directScene(config, session);
 
   tlog("[start] TOTAL", tTotal);
 
   return {
     sessionId: session.id,
     scene,
-    imageBase64,
-    characters: provRes.characters,
+    imageBase64: sceneImageBase64,
+    characters,
   };
 }
 
 // ──────────────────────────────────────────────────────────────────────
-//  requestScene — generate the NEXT scene + image + voice provisioning.
-//  Used both on real scene transitions and on speculative prefetch.
+//  requestScene — next Scene from existing session.
 // ──────────────────────────────────────────────────────────────────────
 
 export async function requestScene(
@@ -125,40 +71,24 @@ export async function requestScene(
 ): Promise<SceneResponse> {
   const tTotal = Date.now();
 
-  const tDirect = Date.now();
-  const { scene, characterUpdates } = await directScene(config.text, req.session);
-  tlog("[scene] directScene", tDirect);
-
-  const preVoiceSession: Session = {
-    ...req.session,
-    characters: mergeCharacters(req.session.characters, characterUpdates),
-  };
-
-  const tImage = Date.now();
-  const tProv = Date.now();
-  const imagePromise = renderImage(config, scene, preVoiceSession.styleGuide)
-    .then((r) => {
-      tlog("[scene] renderImage", tImage);
-      return r;
-    });
-  const provPromise = provisionForScene(config, preVoiceSession, scene)
-    .then((r) => {
-      tlog("[scene] provisionForScene", tProv);
-      return r;
-    });
-  const [imageBase64, provRes] = await Promise.all([imagePromise, provPromise]);
+  const { scene, sceneImageBase64, characters } = await directScene(
+    config,
+    req.session,
+  );
 
   tlog("[scene] TOTAL", tTotal);
 
   return {
     scene,
-    imageBase64,
-    characters: provRes.characters,
+    imageBase64: sceneImageBase64,
+    characters,
   };
 }
 
 // ──────────────────────────────────────────────────────────────────────
 //  visionDecide — interprets a background click into intent + classify.
+//  No change from staging — vision lives outside the scene-generation
+//  pipeline.
 // ──────────────────────────────────────────────────────────────────────
 
 export async function visionDecide(
@@ -171,9 +101,9 @@ export async function visionDecide(
 }
 
 // ──────────────────────────────────────────────────────────────────────
-//  requestInsertBeat — generates a transient in-scene beat (no image
-//  regen, no voice). The client fires /api/beat-audio for the new beat
-//  after this returns.
+//  requestInsertBeat — single-agent transient beat (no image, no new
+//  characters). Stays single-LLM by design — the INSERT_BEAT prompt
+//  forbids new characters and there's nothing to render.
 // ──────────────────────────────────────────────────────────────────────
 
 export async function requestInsertBeat(
@@ -182,19 +112,24 @@ export async function requestInsertBeat(
 ): Promise<InsertBeatResponse> {
   const tTotal = Date.now();
 
-  const tDirect = Date.now();
   const partial = await directInsertBeat(
     config.text,
     req.session,
     req.freeformAction,
   );
-  tlog("[insert-beat] directInsertBeat", tDirect);
 
-  // INSERT_BEAT prompt forbids new characters — promote disallowed-speaker
-  // lines to narration so the player still sees the text (the client only
-  // renders `line` when there is a `speaker`).
+  // INSERT_BEAT prompt forbids new NPCs — promote disallowed-speaker lines
+  // to narration so the player still sees the text (the client only renders
+  // `line` when there is a `speaker`).
+  //
+  // Exception (Pattern B): speaker = "你" is the player speaking. No
+  // Character record exists for "你" (intentional — TTS is skipped), so we
+  // must NOT demote it; the client renders the dialog box correctly.
+  // directInsertBeat already normalized POV variants to "你" before this
+  // guard, so a literal "你" here is always Pattern B player dialog.
   if (
     partial.speaker &&
+    partial.speaker !== "你" &&
     !req.session.characters.some((c) => c.name === partial.speaker)
   ) {
     console.warn(
