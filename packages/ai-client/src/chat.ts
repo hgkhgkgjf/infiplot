@@ -30,13 +30,25 @@ export async function chat(
     body: JSON.stringify(body),
   });
 
+  const text = await res.text();
   if (!res.ok) {
-    const text = await res.text();
     throw new Error(`Chat API error ${res.status}: ${text}`);
   }
 
-  const json = (await res.json()) as {
-    choices: { message: { content: string } }[];
-  };
-  return json.choices[0]?.message.content ?? "";
+  let json: { choices: { message: { content: string } }[] };
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new Error(`Chat API returned invalid JSON: ${text.slice(0, 500)}`);
+  }
+
+  // Guard against empty choices array or missing message/content fields
+  const content = json.choices?.[0]?.message?.content;
+  if (typeof content !== "string") {
+    throw new Error(
+      `Chat API returned no content. Response: ${text.slice(0, 500)}`
+    );
+  }
+
+  return content;
 }
