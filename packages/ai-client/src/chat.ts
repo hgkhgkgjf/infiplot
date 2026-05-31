@@ -38,5 +38,14 @@ export async function chat(
   const json = (await res.json()) as {
     choices: { message: { content: string } }[];
   };
-  return json.choices[0]?.message.content ?? "";
+
+  // 修复问题2和问题5：检查choices是否为空，以及message是否存在
+  const content = json.choices?.[0]?.message?.content;
+  if (content === undefined || content === null) {
+    throw new Error(
+      `Chat API returned no content. Response: ${JSON.stringify(json).slice(0, 500)}`
+    );
+  }
+
+  return content;
 }
