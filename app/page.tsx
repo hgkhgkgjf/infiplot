@@ -731,6 +731,26 @@ const STORIES: Record<Gender, StoryContent[]> = {
 ]
 };
 
+/* 显示顺序映射：STORIES 数组本身不动（封面 /home/{m|f}{i}.webp、首幕
+   /home/firstact/{m|f}{i}.json、prompts.json 都按其索引固定关联，重排会牵动
+   几十个静态资源）。这里只决定首页瀑布流的「呈现顺序」，每一位填入对应
+   STORIES 里的原始索引；渲染时仍用原始索引拼资源 URL。改这一行就能再调顺序。 */
+const DISPLAY_ORDER: Record<Gender, number[]> = {
+  男性向: [
+    13, // 复古未来梦
+    8,  // 社团存亡日
+    9,  // 黄昏归途
+    14, // 极简杀机
+    27, // 辐射新娘
+    10, // 霓虹义体
+    11, // 月光下的约定
+    2,  // 花魁的刀
+    // 其余按原顺序填补
+    0, 1, 3, 4, 5, 6, 7, 12, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29,
+  ],
+  女性向: Array.from({ length: 30 }, (_, i) => i),
+};
+
 /* ---------- typewriter ---------- */
 
 // 父组件持有当前 phrase 的索引（这样 start() 不输入时能用当前闪动的那句
@@ -804,7 +824,7 @@ function StoryCard({
       type="button"
       onClick={onClick}
       style={{ aspectRatio: "4 / 5" }}
-      className="group relative block w-full mb-4 md:mb-5 break-inside-avoid overflow-hidden rounded-sm border border-clay-900/10 bg-cream-100 text-left transition-transform duration-300 ease-out hover:-translate-y-1 hover:shadow-md hover:shadow-clay-900/5"
+      className="group relative block w-full overflow-hidden rounded-sm border border-clay-900/10 bg-cream-100 text-left transition-transform duration-300 ease-out hover:-translate-y-1 hover:shadow-md hover:shadow-clay-900/5"
     >
       <img
         src={image}
@@ -1255,16 +1275,20 @@ export default function HomePage() {
             (fading ? "opacity-0 blur-[3px]" : "opacity-100 blur-0")
           }
         >
-          <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 md:gap-5">
-            {stories.map((c, i) => (
-              <StoryCard
-                key={`${imgPrefix}-${i}`}
-                title={c.title}
-                outline={c.outline}
-                image={`/home/${imgPrefix}${i}.webp`}
-                onClick={() => onCardClick(i, c)}
-              />
-            ))}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-5">
+            {DISPLAY_ORDER[galleryGender].map((origIdx) => {
+              const c = stories[origIdx];
+              if (!c) return null;
+              return (
+                <StoryCard
+                  key={`${imgPrefix}-${origIdx}`}
+                  title={c.title}
+                  outline={c.outline}
+                  image={`/home/${imgPrefix}${origIdx}.webp`}
+                  onClick={() => onCardClick(origIdx, c)}
+                />
+              );
+            })}
           </div>
         </div>
       </section>
