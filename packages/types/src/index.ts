@@ -140,6 +140,53 @@ export type BeatAudio = {
 };
 
 // ──────────────────────────────────────────────────────────────────────
+//  StoryState — the persistent "story bible" + evolving narrative memory.
+//
+//  Created once at session start by the Architect agent (rich opening
+//  planning), then carried across every scene and incrementally updated by
+//  the Writer. This is the single throughline that keeps tone, cast, and
+//  stakes coherent across scene cuts — without it each Writer call would
+//  re-derive the whole arc from a flat beat log and drift.
+//
+//  Split into STABLE fields (set by the Architect, rarely change) and
+//  VOLATILE fields (rewritten each scene via StoryStatePatch).
+// ──────────────────────────────────────────────────────────────────────
+
+export type StoryState = {
+  // ── Stable (Architect-authored; persists unless deliberately revised) ──
+  /** One-line central dramatic question / 主线钩子. */
+  logline: string;
+  /** Genre + tone tags anchoring the 爽点 framework, e.g. "甜宠 / 校园 / 慢热治愈". */
+  genreTags: string;
+  /** Second-person protagonist card: who 你 are, the immediate situation, the
+   *  core want, and a flaw/secret. The audience proxy — never rendered. */
+  protagonist: string;
+  /** Key supporting cast and their relationship/tension with 你 (one per line). */
+  castNotes?: string;
+
+  // ── Volatile (rewritten each scene by the Writer's StoryStatePatch) ──
+  /** Rolling, compressed synopsis of what has happened so far (~3-5 句). */
+  synopsis: string;
+  /** Unresolved hooks / mysteries / questions still owed to the player. */
+  openThreads?: string[];
+  /** Current relationship/emotion state per character, e.g.
+   *  "夏海：好感升温，刚向你告白了一半". */
+  relationships?: string[];
+  /** Where the story is heading next — the conflict/reversal/suspense the
+   *  next scene should drive toward. Seeds the next scene's hook. */
+  nextHook?: string;
+};
+
+/** The volatile subset the Writer rewrites after each scene. Stable fields
+ *  (logline/genreTags/protagonist/castNotes) are preserved by the merge. */
+export type StoryStatePatch = {
+  synopsis?: string;
+  openThreads?: string[];
+  relationships?: string[];
+  nextHook?: string;
+};
+
+// ──────────────────────────────────────────────────────────────────────
 //  Session
 // ──────────────────────────────────────────────────────────────────────
 
@@ -151,6 +198,13 @@ export type Session = {
   history: SceneHistoryEntry[];
   /** Character registry — accumulates across scenes; voices + portraits persist for reuse. */
   characters: Character[];
+  /**
+   * Persistent story bible + evolving narrative memory. Set at session start
+   * by the Architect, carried by the client across every /api/scene call, and
+   * updated by the Writer each scene. Optional for back-compat with any
+   * session payload created before this field existed.
+   */
+  storyState?: StoryState;
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -207,6 +261,9 @@ export type StartResponse = {
   imageUrl: string;
   /** Character registry with voice references + visual cards provisioned. */
   characters: Character[];
+  /** Story bible created by the Architect + updated by the opening scene's
+   *  Writer. The client persists this into the session for later /api/scene calls. */
+  storyState: StoryState;
 };
 
 // /api/scene — generates the next Scene, given session whose latest
@@ -221,6 +278,10 @@ export type SceneResponse = {
   /** Public CDN URL (or data URI in MOCK_IMAGE mode) for the rendered scene background. */
   imageUrl: string;
   characters: Character[];
+  /** Story bible after this scene's Writer applied its update. The client
+   *  must persist this back into the session so the throughline survives the
+   *  next scene cut. */
+  storyState: StoryState;
 };
 
 // /api/beat-audio — lazily synthesize one beat's voice. Client fires this

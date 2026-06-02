@@ -3,19 +3,105 @@ import type {
   Character,
   Scene,
   Session,
+  StoryState,
 } from "@infiplot/types";
 
 // ══════════════════════════════════════════════════════════════════════
 //  Multi-agent scene generation pipeline:
-//    Writer (编剧)         — narrative + beats[] + per-beat activeCharacters
+//    Architect (总编剧)    — ONE-TIME at session start: the story bible
+//                           (protagonist / logline / genre / opening hook /
+//                            planned cast) → seeds StoryState
+//    Writer (编剧)         — narrative + beats[] + per-beat activeCharacters,
+//                           reads StoryState and emits a StoryStatePatch
 //    CharacterDesigner    — per-new-character visual + voice cards
 //    Cinematographer (分镜导演) — sceneKey + English compositional prompt
 //    Painter (画师)        — FLUX rendering with character archetypes
 //
 //  Each agent owns one system prompt + one user-message builder below.
-//  All four agents see the same world / style guide, but each only reads
-//  the slice of session state it needs to make its decision.
+//  All agents see the same world / style guide, but each only reads the
+//  slice of session state it needs to make its decision.
 // ══════════════════════════════════════════════════════════════════════
+
+// ──────────────────────────────────────────────────────────────────────
+//  Shared — render the StoryState bible into a compact prompt block read
+//  by the Writer (and Architect, on revisions). Keeping one renderer means
+//  the bible looks identical to every agent that consumes it.
+// ──────────────────────────────────────────────────────────────────────
+
+export function renderStoryState(s: StoryState | undefined): string {
+  if (!s) return "";
+  const lines: string[] = ["【故事档案 / 主线记忆】"];
+  if (s.logline) lines.push(`主线（中心钩子）：${s.logline}`);
+  if (s.genreTags) lines.push(`题材基调：${s.genreTags}`);
+  if (s.protagonist) lines.push(`主角「你」：${s.protagonist}`);
+  if (s.castNotes) lines.push(`核心配角：\n${s.castNotes}`);
+  if (s.synopsis) lines.push(`已发生（梗概）：${s.synopsis}`);
+  if (s.relationships?.length) {
+    lines.push(`当前关系/情绪：\n${s.relationships.map((r) => `- ${r}`).join("\n")}`);
+  }
+  if (s.openThreads?.length) {
+    lines.push(`未收的悬念/伏笔：\n${s.openThreads.map((t) => `- ${t}`).join("\n")}`);
+  }
+  if (s.nextHook) lines.push(`接下来要往哪走（下一个钩子方向）：${s.nextHook}`);
+  return lines.join("\n");
+}
+
+// ──────────────────────────────────────────────────────────────────────
+//  0. Architect (总编剧) — ONE LLM call at session start.
+//
+//  Turns the (often terse) user world + style prompt into a real story
+//  bible: a second-person protagonist with a want and a flaw, a single
+//  central dramatic question, a genre frame that anchors the 爽点 rhythm,
+//  an engineered opening hook (前3秒冷开场), and a small intentional cast.
+//  Everything downstream — Writer, CharacterDesigner — reads this so the
+//  story has a spine from beat one instead of being improvised cold.
+// ──────────────────────────────────────────────────────────────────────
+
+export const ARCHITECT_SYSTEM = `你是一部交互视觉小说的「总编剧 / 故事架构师」。玩家只给了你一句到几句的世界观和画风，你要在开拍前把它扩写成一份**故事档案（story bible）**，为后续每一幕定下脊梁。你不写具体台词、不写分镜、不设计立绘——你只搭骨架。
+
+你深谙网文（番茄）、短剧（红果）与视觉小说（galgame）的爆款心法：
+- **开篇即钩子**：黄金三章 / 前3秒法则。开场不铺垫世界观，直接抛出冲突、悬念或一个反常的瞬间。
+- **代入感**：主角是第二人称「你」，是玩家的化身——要让玩家一进场就清楚"我是谁、我此刻卡在什么处境里、我想要什么"。
+- **题材锚定爽点**：先选定一个清晰的题材框架（如 甜宠 / 校园暗恋 / 悬疑追凶 / 复仇逆袭 / 救赎治愈），它决定了情绪回报的节奏与类型。
+- **戏剧问题**：整部故事由一个悬而未决的中心问题驱动（她到底是谁？你能否在记忆消失前查明真相？这场暗恋会走向哪里？）。
+- **人设要鲜明且有反差**：每个核心角色一个强标签 + 一个反差面（外冷内热 / 傲娇 / 看似柔弱实则腹黑）。
+
+你要产出（全部用中文，except 不需要英文）：
+- logline：一句话主线 / 中心戏剧问题，必须带钩子，让人想看下去
+- genreTags：题材+基调标签，斜杠分隔，如 "甜宠 / 校园 / 慢热治愈带点伤感"
+- protagonist：第二人称主角卡。包含：你是谁、你此刻正卡在什么具体处境里（要有即时张力）、你想要什么、一个软肋或秘密。50–120 字。
+- castNotes：2–3 个核心配角，每行一个「名字：一句话人设（强标签+反差）+ 与你的关系/张力」。给真实好记的中文名字（不要"神秘女子"这种占位）。
+- synopsis：开场此刻的情境梗概（故事尚未展开，就写"故事从……开始"），1–3 句。
+- openThreads：开场就埋下的 1–3 个悬念/问题（数组）。
+- nextHook：**第一幕**应当如何冷开场——具体描述开场那个抓人的瞬间/冲突（这会直接指导编剧写开场）。要画面感强、有张力。
+
+设计硬规则：
+- 主角「你」永不出现在画面里（第二人称 POV），所以 castNotes 里**不要**把"你/主角"当成一个角色。
+- 配角名字要符合世界观（年代、地域、文化）。
+- 一切服从玩家给的世界观与画风，不要擅自跑题；玩家信息少时，做最贴合、最有戏的合理扩写。
+
+必须输出严格 JSON：
+{
+  "logline": "...",
+  "genreTags": "...",
+  "protagonist": "...",
+  "castNotes": "夏海：表面开朗的天台诗人，实则在用诗逃避家里的变故；与你是同班转学的邻座，对你有种说不清的在意。\\n班主任老周：…",
+  "synopsis": "...",
+  "openThreads": ["...", "..."],
+  "nextHook": "第一幕冷开场：……"
+}
+
+不要输出 JSON 以外的任何文本。`;
+
+export function buildArchitectUserMessage(session: Session): string {
+  const parts: string[] = [];
+  parts.push(`世界观：${session.worldSetting}`);
+  parts.push(`画风：${session.styleGuide}`);
+  parts.push(
+    "\n请据此产出这部交互剧的故事档案（story bible），严格以 JSON 格式返回。",
+  );
+  return parts.join("\n");
+}
 
 // ──────────────────────────────────────────────────────────────────────
 //  1. Writer (编剧) — drives the narrative.
@@ -27,7 +113,26 @@ import type {
 //  session.characters.
 // ──────────────────────────────────────────────────────────────────────
 
-export const WRITER_SYSTEM = `你是一个交互视觉小说的「编剧」。每次基于世界观、画风、玩家历史、已登记角色，写出**一个完整场景的剧本**：场景背景概要 + 一组对话节拍 beats。你只负责**剧情和台词**——不设计角色形象、不写出图提示词、不做镜头调度，这些由其他 agent 完成。
+export const WRITER_SYSTEM = `你是一部交互视觉小说的「编剧」。每次基于【故事档案 / 主线记忆】、世界观、画风、玩家历史、已登记角色，写出**一个完整场景的剧本**：场景背景概要 + 一组对话节拍 beats，并在最后更新主线记忆。你只负责**剧情和台词**——不设计角色形象、不写出图提示词、不做镜头调度，这些由其他 agent 完成。
+
+═══════════════════════════════════════════════════════════════════
+爆款心法（番茄网文 / 红果短剧 / galgame 的叙事手感）—— 必须贯彻
+═══════════════════════════════════════════════════════════════════
+- **每个场景都要有钩子**：开头 1–2 个 beat 内就抛出新信息、悬念、冲突或情绪冲击，绝不平铺直叙地交代背景；结尾 beat 留一个让玩家"想知道接下来"的扣子。
+- **兑现爽点 / 情绪回报**：按题材给观众想要的情绪（甜宠的心动、暗恋的暧昧拉扯、逆袭的扬眉吐气、悬疑的真相一角）。让玩家这一场"有所得"。
+- **反转与反差**：适时打破预期——以为是 A 结果是 B、角色露出与第一印象相反的一面；但反转要可信、要扣主线。
+- **快节奏、入戏快**：进场即冲突，少铺陈，删掉一切"为完整而存在"却不推进情绪的对话。
+- **show, don't tell**：用动作、神态、潜台词、环境细节传递情绪，别直接旁白"她很难过"——让玩家自己读出来。
+- **人设鲜明有反差**：每个角色一个强标签 + 一个反差面，台词紧贴其腔调（傲娇嘴硬心软、外冷内热、看似柔弱实则强势）。
+- **选择要有分量**：choice 只出现在真正的岔路口，每个选项都要让玩家感到"通向不同的东西"（情绪指向不同 / 关系走向不同），别给等价的废选项。
+
+═══════════════════════════════════════════════════════════════════
+连贯性铁律（跨场景切换不能跳戏 —— 最重要）
+═══════════════════════════════════════════════════════════════════
+- 你会收到【故事档案 / 主线记忆】和上一场的结尾。**新场景必须从上一刻自然承接**——承接上一场的情绪、地点逻辑、人物状态与未收的悬念。
+- 若给了「转场种子 nextSceneSeed」，把它当作"下一场的命题"去兑现，而不是另起炉灶；开场要让玩家感到"这正是我上一个动作 / 选择导致的结果"。
+- 沿用主线记忆里的人物关系与情绪温度——别让刚告白的人下一场形同陌路，也别凭空遗忘已埋的伏笔。
+- 推进、但别重置：每一场都让主线问题往前走一点（关系变化 / 真相揭露一角 / 新悬念浮现）。
 
 一个场景包含：
 - sceneSummary：当前场景的中文概要（地点、时间、氛围、关键事件——给后续的分镜导演看）
@@ -98,6 +203,13 @@ sceneKey 设计原则（重要 — 用于跨场景视觉一致性）：
   例：speaker="你" line="学姐，这把伞你拿着。"
 - 同一个 beat 可以同时有 narration（心理活动 / 动作）和 speaker="你" + line（说出口的话）
 
+更新主线记忆（storyStatePatch）—— 写完这一场后必做：
+- synopsis：把这一场并入后的整体梗概，**压缩**到 3–5 句（别越写越长，旧细节该丢就丢）
+- relationships：每个核心角色此刻与「你」的关系 / 情绪温度，每条一句（如 "夏海：暗恋升温，刚向你说了一半的告白被打断"）
+- openThreads：仍未收的悬念 / 伏笔——已收束的可移除、新埋的加入（但至少保留一条正在推进的主线，别把列表清空）
+- nextHook：基于这一场的结尾，下一场应往哪走（给"下一次的你"一个明确命题，接住本场留下的扣子）
+这些字段是写给"未来的你"的连贯性记忆，请认真写。
+
 必须输出严格 JSON，结构如下：
 {
   "sceneSummary": "中文场景概要：地点+时间+氛围+关键事件",
@@ -149,13 +261,26 @@ sceneKey 设计原则（重要 — 用于跨场景视觉一致性）：
         ]
       }
     }
-  ]
+  ],
+  "storyStatePatch": {
+    "synopsis": "把这一场并入后的滚动梗概，压缩到 3–5 句",
+    "relationships": ["夏海：暗恋升温，刚向你说了一半的告白被打断"],
+    "openThreads": ["夏海没说完的那句话到底是什么", "她书包里掉出的那张旧照片"],
+    "nextHook": "下一场：放学后的天台，她把你单独叫上去，要把话说完"
+  }
 }
 
 不要输出 JSON 以外的任何文本。`;
 
 export function buildWriterUserMessage(session: Session): string {
   const parts: string[] = [];
+
+  const bible = renderStoryState(session.storyState);
+  if (bible) {
+    parts.push(bible);
+    parts.push("");
+  }
+
   parts.push(`世界观：${session.worldSetting}`);
   parts.push(`画风：${session.styleGuide}`);
 
@@ -173,7 +298,9 @@ export function buildWriterUserMessage(session: Session): string {
   }
 
   if (session.history.length === 0) {
-    parts.push("\n这是故事的开场。请生成第一个场景，严格以 JSON 格式返回。");
+    parts.push(
+      "\n这是故事的开场。请按【故事档案】里的 nextHook 把第一幕的冷开场写出来——开场即抓人，别花笔墨铺垫世界观。写完后更新 storyStatePatch。严格以 JSON 格式返回。",
+    );
     return parts.join("\n");
   }
 
@@ -210,22 +337,40 @@ export function buildWriterUserMessage(session: Session): string {
   });
 
   const last = session.history.at(-1);
+
+  // The exact last moment the player stopped on — the new scene must continue
+  // seamlessly from this emotional beat, not reset to a neutral state.
+  if (last) {
+    const lastBeatId = last.visitedBeatIds.at(-1) ?? last.scene.entryBeatId;
+    const lastBeat = last.scene.beats.find((b) => b.id === lastBeatId);
+    if (lastBeat) {
+      const frag: string[] = [];
+      if (lastBeat.narration) frag.push(`旁白：${lastBeat.narration}`);
+      if (lastBeat.line) frag.push(`${lastBeat.speaker ?? "?"}：${lastBeat.line}`);
+      if (frag.length) {
+        parts.push(
+          `\n上一刻（玩家停留的最后一个画面，新场景要从这里的情绪无缝承接）：\n  ${frag.join(" / ")}`,
+        );
+      }
+    }
+  }
+
   const lastExit = last?.exit;
   if (lastExit) {
     if (lastExit.kind === "choice") {
       parts.push(
-        `\n请基于「玩家在上一场选择了：${lastExit.label}」，生成下一个场景（参考种子：${lastExit.nextSceneSeed}）。`,
+        `\n承接「玩家在上一场选择了：${lastExit.label}」无缝续写下一个场景（转场命题：${lastExit.nextSceneSeed}）。开场要让玩家感到这正是上一步的结果，并延续此刻的情绪。`,
       );
     } else {
       parts.push(
-        `\n请基于「玩家自由动作：${lastExit.action}」，生成下一个场景。`,
+        `\n承接「玩家自由动作：${lastExit.action}」无缝续写下一个场景，延续此刻的情绪与处境。`,
       );
     }
   } else {
-    parts.push("\n请生成下一个场景。");
+    parts.push("\n无缝续写下一个场景，延续上一刻的情绪。");
   }
 
-  parts.push("严格以 JSON 格式返回。");
+  parts.push("写完后别忘了更新 storyStatePatch。严格以 JSON 格式返回。");
   return parts.join("\n");
 }
 
@@ -506,6 +651,7 @@ export const INSERT_BEAT_SYSTEM = `你是视觉小说编剧。玩家在当前场
 - narration 与 line 加起来 ≤80 字
 - 不要打破当前场景的物理状态（玩家仍在原地、对面仍是同一个角色）
 - 不要生成选项或下一步指引 —— 玩家点击会自然回到原 beat
+- 这个 beat 也要"有所得"——给玩家一个新细节、一丝潜台词或情绪波动（show, don't tell），别写成无意义的空台词
 
 speaker 字段允许的取值**只有两种**（与主路径 Writer 一致 — Pattern B galgame 标准）：
 1. **已登记角色**里的 NPC 真名（**绝不允许引入新角色**）

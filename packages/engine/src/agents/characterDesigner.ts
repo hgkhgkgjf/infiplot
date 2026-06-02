@@ -15,25 +15,20 @@ import {
 } from "../prompts";
 
 // ──────────────────────────────────────────────────────────────────────
-//  CharacterDesigner agent — designs ONE new character end-to-end.
+//  CharacterDesigner agent — designs ONE new character.
 //
-//  Pipeline (per character, all the slow parts are parallelized):
+//  Exposed as three GRANULAR stages so the director can schedule the slow
+//  parts around the Painter (a voice is never needed to paint a scene, and
+//  only entry-beat characters' portraits are referenced by the Painter):
 //
-//    1. LLM call — designs BOTH visual + voice cards in one shot
-//       (intentional: same agent thinks about who this character IS,
-//        which keeps appearance and vocal personality coherent)
+//    1. designCharacterCard      — ONE LLM call → visual + voice TEXT cards
+//       (intentional bundling: the same agent thinks about who this character
+//        IS, keeping appearance and vocal personality coherent)
+//    2. renderCharacterPortrait  — base portrait image (Runware URL + UUID)
+//    3. provisionCharacterVoice  — Xiaomi MiMo voicedesign → reference audio
 //
-//    2. In parallel:
-//       a. Image gen — base portrait (Runware returns URL + UUID in one shot;
-//          no separate upload round-trip is needed for cheap re-reference)
-//       b. Voice provisioning — Xiaomi MiMo voicedesign from voiceDescription
-//          → reference audio for later voiceclone synth
-//
-//    3. Returns merged Character ready to be added to session.characters
-//
-//  Each step degrades gracefully — if image gen fails we return the
-//  character without a portrait; if voice gen fails we return without
-//  voice. The game keeps running even when sub-components fail.
+//  Each step degrades gracefully — if image gen fails the character just has
+//  no portrait; if voice gen fails it has no voice. The game keeps running.
 // ──────────────────────────────────────────────────────────────────────
 
 type CharacterDesignOutput = {
@@ -77,7 +72,7 @@ async function runDesignLLM(
 //
 // In mock mode we return the data URI as basePortraitUrl with no UUID
 // (Painter is short-circuited anyway, so the lack of a UUID is moot).
-async function renderPortrait(
+export async function renderCharacterPortrait(
   config: EngineConfig,
   charName: string,
   visualDescription: string,
@@ -101,7 +96,7 @@ async function renderPortrait(
   }
 }
 
-async function provisionVoiceSafe(
+export async function provisionCharacterVoice(
   config: EngineConfig,
   voiceDescription: string,
   charName: string,
@@ -116,45 +111,31 @@ async function provisionVoiceSafe(
   }
 }
 
-// Single-character design pipeline. Called by the orchestrator once per
-// NEW character name; multiple characters in the same scene run their
-// pipelines in parallel at the orchestrator level.
-export async function designCharacter(
+// The cheap first stage: design the visual + voice TEXT cards in one LLM
+// call. The director then schedules renderCharacterPortrait /
+// provisionCharacterVoice around the Painter. Multiple new characters in the
+// same scene run this stage in parallel at the director level.
+export type CharacterCard = {
+  name: string;
+  visualDescription?: string;
+  voiceDescription: string;
+};
+
+export async function designCharacterCard(
   config: EngineConfig,
   session: Session,
   charName: string,
-): Promise<Character> {
-  const tTotal = Date.now();
-
-  // Step 1 — LLM design (visual + voice). Must complete first.
+): Promise<CharacterCard> {
   const tDesign = Date.now();
   const design = await runDesignLLM(config, session, charName);
   tlog(`[charDesigner ${charName}] design LLM`, tDesign);
 
-  const visualDescription = design.visualDescription?.trim();
-  const voiceDescription =
-    design.voiceDescription?.trim() ||
-    `请根据角色名「${charName}」推断其性别、年龄与气质，生成最贴合的音色。所属世界观：${session.worldSetting}`;
-
-  // Step 2 — parallel: portrait + voice provisioning.
-  const tProvision = Date.now();
-  const portraitPromise = visualDescription
-    ? renderPortrait(config, charName, visualDescription, session.styleGuide)
-    : Promise.resolve({} as Awaited<ReturnType<typeof renderPortrait>>);
-  const voicePromise = provisionVoiceSafe(config, voiceDescription, charName);
-
-  const [portrait, voice] = await Promise.all([portraitPromise, voicePromise]);
-  tlog(`[charDesigner ${charName}] portrait+voice parallel`, tProvision);
-
-  tlog(`[charDesigner ${charName}] TOTAL`, tTotal);
-
   return {
     name: charName,
-    voiceDescription,
-    visualDescription,
-    basePortraitUrl: portrait.basePortraitUrl,
-    basePortraitUuid: portrait.basePortraitUuid,
-    voice,
+    visualDescription: design.visualDescription?.trim() || undefined,
+    voiceDescription:
+      design.voiceDescription?.trim() ||
+      `请根据角色名「${charName}」推断其性别、年龄与气质，生成最贴合的音色。所属世界观：${session.worldSetting}`,
   };
 }
 
@@ -169,6 +150,6 @@ export async function provisionVoiceForName(
   charName: string,
 ): Promise<Character> {
   const voiceDescription = `请根据角色名「${charName}」推断其性别、年龄与气质，生成最贴合的音色。所属世界观：${session.worldSetting}`;
-  const voice = await provisionVoiceSafe(config, voiceDescription, charName);
+  const voice = await provisionCharacterVoice(config, voiceDescription, charName);
   return { name: charName, voiceDescription, voice };
 }

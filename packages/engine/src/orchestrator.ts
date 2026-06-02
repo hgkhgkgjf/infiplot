@@ -12,6 +12,7 @@ import type {
   VisionRequest,
   VisionResponse,
 } from "@infiplot/types";
+import { runArchitect } from "./agents/architect";
 import { annotateClick } from "./annotate";
 import { directInsertBeat, directScene } from "./director";
 import { synthesizeBeat } from "./voice";
@@ -49,7 +50,18 @@ export async function startSession(
     characters: [],
   };
 
-  const { scene, sceneImageUrl, characters } = await directScene(config, session);
+  // Stage 0 — Architect: expand the terse world/style prompt into a story
+  // bible BEFORE the first scene. Serial by necessity (the opening Writer
+  // reads session.storyState), but it gives the whole story a spine from beat
+  // one — the latency is offset by the director's portrait/voice overlap win.
+  const tArchitect = Date.now();
+  session.storyState = await runArchitect(config.text, session);
+  tlog("[start] Architect", tArchitect);
+
+  const { scene, sceneImageUrl, characters, storyState } = await directScene(
+    config,
+    session,
+  );
 
   tlog("[start] TOTAL", tTotal);
 
@@ -58,6 +70,7 @@ export async function startSession(
     scene,
     imageUrl: sceneImageUrl,
     characters,
+    storyState,
   };
 }
 
@@ -71,7 +84,7 @@ export async function requestScene(
 ): Promise<SceneResponse> {
   const tTotal = Date.now();
 
-  const { scene, sceneImageUrl, characters } = await directScene(
+  const { scene, sceneImageUrl, characters, storyState } = await directScene(
     config,
     req.session,
   );
@@ -82,6 +95,7 @@ export async function requestScene(
     scene,
     imageUrl: sceneImageUrl,
     characters,
+    storyState,
   };
 }
 

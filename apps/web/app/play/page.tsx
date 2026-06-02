@@ -187,6 +187,7 @@ function prefetchScenePath(
         const carriedBase: Session = {
           ...baseSession,
           characters: data.characters,
+          storyState: data.storyState,
         };
         prefetchScenePath(pool, carriedBase, [...steps, nextStep], depth + 1);
       }
@@ -539,6 +540,7 @@ function PlayInner() {
             },
           ],
           characters: data.characters,
+          storyState: data.storyState,
         };
         visitedBeatsRef.current = [data.scene.entryBeatId];
         setSession(initial);
@@ -635,6 +637,7 @@ function PlayInner() {
           },
         ],
         characters: result.characters,
+        storyState: result.storyState,
       };
       visitedBeatsRef.current = [result.scene.entryBeatId];
       setSession(newSession);

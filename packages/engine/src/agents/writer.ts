@@ -7,6 +7,7 @@ import type {
   BeatNext,
   ProviderConfig,
   Session,
+  StoryStatePatch,
 } from "@infiplot/types";
 import { parseJsonLoose } from "../jsonParser";
 import { WRITER_SYSTEM, buildWriterUserMessage } from "../prompts";
@@ -28,6 +29,9 @@ export type WriterOutput = {
   sceneKey?: string;
   entryBeatId: string;
   beats: Beat[];
+  /** Rewritten volatile story memory — merged onto the carried StoryState by
+   *  the director. Absent when the model omitted it (rare; bible just stales). */
+  storyStatePatch?: StoryStatePatch;
 };
 
 // Raw shapes — what the LLM produces before validation / coercion.
@@ -59,11 +63,18 @@ type RawBeat = {
   activeCharacters?: RawActiveCharacter[];
   next?: RawNext;
 };
+type RawStoryStatePatch = {
+  synopsis?: unknown;
+  openThreads?: unknown;
+  relationships?: unknown;
+  nextHook?: unknown;
+};
 type RawScene = {
   sceneSummary?: string;
   sceneKey?: string;
   entryBeatId?: string;
   beats?: RawBeat[];
+  storyStatePatch?: RawStoryStatePatch;
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -321,6 +332,33 @@ function normalizeSceneKey(raw: string | undefined): string | undefined {
   return slug.length > 0 ? slug : undefined;
 }
 
+function coerceStringArray(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw
+    .map((x) => (typeof x === "string" ? x.trim() : ""))
+    .filter((x) => x.length > 0);
+  return out.length > 0 ? out : undefined;
+}
+
+// Pull the volatile story-memory rewrite out of the Writer's JSON. Only
+// non-empty fields are kept; an all-empty/absent patch returns undefined so
+// the director leaves the carried StoryState untouched.
+function coerceStoryStatePatch(
+  raw: RawStoryStatePatch | undefined,
+): StoryStatePatch | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const patch: StoryStatePatch = {};
+  const synopsis = typeof raw.synopsis === "string" ? raw.synopsis.trim() : "";
+  if (synopsis) patch.synopsis = synopsis;
+  const openThreads = coerceStringArray(raw.openThreads);
+  if (openThreads) patch.openThreads = openThreads;
+  const relationships = coerceStringArray(raw.relationships);
+  if (relationships) patch.relationships = relationships;
+  const nextHook = typeof raw.nextHook === "string" ? raw.nextHook.trim() : "";
+  if (nextHook) patch.nextHook = nextHook;
+  return Object.keys(patch).length > 0 ? patch : undefined;
+}
+
 export async function runWriter(
   config: ProviderConfig,
   session: Session,
@@ -359,6 +397,7 @@ export async function runWriter(
     sceneKey: normalizeSceneKey(parsed.sceneKey),
     entryBeatId,
     beats,
+    storyStatePatch: coerceStoryStatePatch(parsed.storyStatePatch),
   };
 }
 
