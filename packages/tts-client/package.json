@@ -1,5 +1,5 @@
 {
-  "name": "@yume/tts-client",
+  "name": "@infiplot/tts-client",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,6 +12,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@yume/types": "workspace:*"
+    "@infiplot/types": "workspace:*"
   }
 }

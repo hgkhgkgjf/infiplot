@@ -24,9 +24,9 @@ import type {
   Session,
   StartResponse,
   VisionResponse,
-} from "@yume/types";
+} from "@infiplot/types";
 
-const MUTED_STORAGE_KEY = "yume:muted";
+const MUTED_STORAGE_KEY = "infiplot:muted";
 
 // Cap how long we wait for the browser to download + decode a scene image
 // before giving up and rendering anyway. Runware's CDN is normally <2s for a
@@ -485,7 +485,7 @@ function PlayInner() {
       const p = PRESETS.find((x) => x.id === presetId);
       if (p) payload = { worldSetting: p.worldSetting, styleGuide: p.styleGuide };
     } else if (params.get("custom") === "1") {
-      const stored = sessionStorage.getItem("yume:custom");
+      const stored = sessionStorage.getItem("infiplot:custom");
       if (stored) {
         try {
           const parsed = JSON.parse(stored) as {
@@ -890,7 +890,7 @@ function PlayInner() {
           className="text-[10px] smallcaps text-clay-600 hover:text-clay-900 transition-colors flex items-center gap-2"
         >
           <i className="fa-solid fa-arrow-left text-[9px]" />
-          云梦
+          InfiPlot
         </Link>
         <div className="flex items-center gap-3 text-[10px] smallcaps text-clay-500 num">
           <span>第 · {String(sceneCount).padStart(3, "0")} · 幕</span>

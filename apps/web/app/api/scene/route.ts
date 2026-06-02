@@ -1,5 +1,5 @@
-import { requestScene } from "@yume/engine";
-import type { SceneRequest } from "@yume/types";
+import { requestScene } from "@infiplot/engine";
+import type { SceneRequest } from "@infiplot/types";
 import { NextResponse } from "next/server";
 import { loadEngineConfig } from "@/lib/config";
 

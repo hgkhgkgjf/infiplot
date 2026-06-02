@@ -10,7 +10,7 @@ export default function NewPage() {
           className="text-[10px] smallcaps text-clay-700 hover:text-clay-900 transition-colors flex items-center gap-2"
         >
           <i className="fa-solid fa-arrow-left text-[9px]" />
-          云梦
+          InfiPlot
         </Link>
         <span className="text-[10px] smallcaps text-clay-500">
           编 织 一 个 世 界

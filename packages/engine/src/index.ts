@@ -11,5 +11,5 @@ export { mergeCharacters } from "./director";
 export type { SceneResult } from "./director";
 export type { WriterOutput } from "./agents/writer";
 export type { CinematographerOutput } from "./agents/cinematographer";
-export type { InsertBeatPartial } from "@yume/types";
+export type { InsertBeatPartial } from "@infiplot/types";
 export * from "./prompts";

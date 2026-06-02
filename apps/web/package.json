@@ -1,5 +1,5 @@
 {
-  "name": "@yume/web",
+  "name": "@infiplot/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,9 +11,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@yume/ai-client": "workspace:*",
-    "@yume/engine": "workspace:*",
-    "@yume/types": "workspace:*",
+    "@infiplot/ai-client": "workspace:*",
+    "@infiplot/engine": "workspace:*",
+    "@infiplot/types": "workspace:*",
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

@@ -1,5 +1,5 @@
-import { chat } from "@yume/ai-client";
-import type { BeatActiveCharacter, ProviderConfig } from "@yume/types";
+import { chat } from "@infiplot/ai-client";
+import type { BeatActiveCharacter, ProviderConfig } from "@infiplot/types";
 import { parseJsonLoose } from "../jsonParser";
 import {
   CINEMATOGRAPHER_SYSTEM,

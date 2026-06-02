@@ -1,17 +1,17 @@
 {
-  "name": "yume",
+  "name": "infiplot",
   "version": "0.1.0",
   "private": true,
-  "description": "AI 驱动的视觉小说（云梦）",
+  "description": "AI 实时交互剧情游戏",
   "license": "UNLICENSED",
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "pnpm --filter @yume/web dev",
-    "build": "pnpm --filter @yume/web build",
-    "start": "pnpm --filter @yume/web start",
+    "dev": "pnpm --filter @infiplot/web dev",
+    "build": "pnpm --filter @infiplot/web build",
+    "start": "pnpm --filter @infiplot/web start",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck"
   },

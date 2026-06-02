@@ -1,5 +1,5 @@
-import { synthesize } from "@yume/tts-client";
-import type { BeatAudio, CharacterVoice, TtsConfig } from "@yume/types";
+import { synthesize } from "@infiplot/tts-client";
+import type { BeatAudio, CharacterVoice, TtsConfig } from "@infiplot/types";
 
 // Per-beat synth budget. MiMo's median synth is 3–7s; the tail can spike
 // to 30–70s under concurrent load. Capping here means a single bad beat

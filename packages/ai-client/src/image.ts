@@ -1,4 +1,4 @@
-import type { ProviderConfig } from "@yume/types";
+import type { ProviderConfig } from "@infiplot/types";
 import { fetchWithRetry } from "./fetchWithRetry";
 
 // Runware uses its own task-array protocol (not OpenAI-compatible).

@@ -1,4 +1,4 @@
-import { chat } from "@yume/ai-client";
+import { chat } from "@infiplot/ai-client";
 import type {
   Character,
   EngineConfig,
@@ -6,7 +6,7 @@ import type {
   ProviderConfig,
   Scene,
   Session,
-} from "@yume/types";
+} from "@infiplot/types";
 import { designCharacter, provisionVoiceForName } from "./agents/characterDesigner";
 import { runCinematographer } from "./agents/cinematographer";
 import { runPainter } from "./agents/painter";

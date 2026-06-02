@@ -1,11 +1,11 @@
-import { chat, generateImage } from "@yume/ai-client";
-import { provisionVoice } from "@yume/tts-client";
+import { chat, generateImage } from "@infiplot/ai-client";
+import { provisionVoice } from "@infiplot/tts-client";
 import type {
   Character,
   CharacterVoice,
   EngineConfig,
   Session,
-} from "@yume/types";
+} from "@infiplot/types";
 import { parseJsonLoose } from "../jsonParser";
 import { mockImageDataUri } from "../mockImage";
 import {

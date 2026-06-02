@@ -5,10 +5,10 @@ const config: NextConfig = {
   reactStrictMode: true,
   typedRoutes: false,
   transpilePackages: [
-    "@yume/engine",
-    "@yume/ai-client",
-    "@yume/types",
-    "@yume/tts-client",
+    "@infiplot/engine",
+    "@infiplot/ai-client",
+    "@infiplot/types",
+    "@infiplot/tts-client",
   ],
   serverExternalPackages: ["sharp"],
   turbopack: {

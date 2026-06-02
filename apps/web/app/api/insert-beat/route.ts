@@ -1,5 +1,5 @@
-import { requestInsertBeat } from "@yume/engine";
-import type { InsertBeatRequest } from "@yume/types";
+import { requestInsertBeat } from "@infiplot/engine";
+import type { InsertBeatRequest } from "@infiplot/types";
 import { NextResponse } from "next/server";
 import { loadEngineConfig } from "@/lib/config";
 

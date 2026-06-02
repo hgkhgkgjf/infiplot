@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 import "./globals.css";
 
-// Editorial 云梦 fonts: drive tailwind `font-serif`/`font-sans` via
+// Editorial fonts: drive tailwind `font-serif`/`font-sans` via
 // --font-serif / --font-sans across every page (home, /play, /new, CustomForm).
 const cormorant = Cormorant_Garamond({
   subsets: ["latin"],

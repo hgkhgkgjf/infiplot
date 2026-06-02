@@ -1,4 +1,4 @@
-import type { ProviderConfig } from "@yume/types";
+import type { ProviderConfig } from "@infiplot/types";
 import { fetchWithRetry } from "./fetchWithRetry";
 
 export type ChatMessage = {

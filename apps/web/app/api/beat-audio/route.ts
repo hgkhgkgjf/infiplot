@@ -1,5 +1,5 @@
-import { requestBeatAudio } from "@yume/engine";
-import type { BeatAudioRequest } from "@yume/types";
+import { requestBeatAudio } from "@infiplot/engine";
+import type { BeatAudioRequest } from "@infiplot/types";
 import { NextResponse } from "next/server";
 import { loadEngineConfig } from "@/lib/config";
 

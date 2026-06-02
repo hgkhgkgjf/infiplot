@@ -1,10 +1,10 @@
-import { interpretClick } from "@yume/ai-client";
+import { interpretClick } from "@infiplot/ai-client";
 import type {
   ClickIntent,
   ProviderConfig,
   Scene,
   VisionClassify,
-} from "@yume/types";
+} from "@infiplot/types";
 import { parseJsonLoose } from "./jsonParser";
 import { VISION_SYSTEM_PROMPT, buildVisionUserPrompt } from "./prompts";
 

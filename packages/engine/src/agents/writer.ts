@@ -1,4 +1,4 @@
-import { chat } from "@yume/ai-client";
+import { chat } from "@infiplot/ai-client";
 import type {
   Beat,
   BeatActiveCharacter,
@@ -7,7 +7,7 @@ import type {
   BeatNext,
   ProviderConfig,
   Session,
-} from "@yume/types";
+} from "@infiplot/types";
 import { parseJsonLoose } from "../jsonParser";
 import { WRITER_SYSTEM, buildWriterUserMessage } from "../prompts";
 

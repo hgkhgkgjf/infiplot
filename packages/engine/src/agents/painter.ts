@@ -1,11 +1,11 @@
-import { generateImage } from "@yume/ai-client";
-import type { GenerateImageOptions, GenerateImageResult } from "@yume/ai-client";
+import { generateImage } from "@infiplot/ai-client";
+import type { GenerateImageOptions, GenerateImageResult } from "@infiplot/ai-client";
 import type {
   Beat,
   Character,
   EngineConfig,
   ProviderConfig,
-} from "@yume/types";
+} from "@infiplot/types";
 import { mockImageDataUri } from "../mockImage";
 import { buildPainterPrompt } from "../prompts";
 

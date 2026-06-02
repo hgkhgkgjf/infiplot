@@ -19,7 +19,7 @@ export function CustomForm() {
     if (!canSubmit) return;
     setSubmitting(true);
     sessionStorage.setItem(
-      "yume:custom",
+      "infiplot:custom",
       JSON.stringify({ worldSetting, styleGuide }),
     );
     router.push("/play?custom=1");

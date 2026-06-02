@@ -1,4 +1,4 @@
-import type { EngineConfig, TtsConfig } from "@yume/types";
+import type { EngineConfig, TtsConfig } from "@infiplot/types";
 
 function readVar(name: string): string {
   const v = process.env[name];

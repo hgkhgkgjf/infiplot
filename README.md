@@ -1,6 +1,6 @@
-# 云梦
+# InfiPlot
 
-> An AI-driven visual novel painted by an AI, one scene at a time. You talk and explore within a scene; when the story turns a corner, it paints the next. You click. It paints. The story unfolds.
+> A real-time AI-generated interactive story game — painted scene by scene. You talk and explore within a scene; when the story turns a corner, it paints the next. You click. It paints. The story unfolds.
 
 ---
 
@@ -37,7 +37,7 @@ There is no traditional game UI baked into the art. The AI paints the world in w
 
 ## One-click deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/zonghaoyuan/yume&root-directory=apps/web&env=TEXT_BASE_URL,TEXT_API_KEY,TEXT_MODEL,IMAGE_BASE_URL,IMAGE_API_KEY,IMAGE_MODEL,VISION_BASE_URL,VISION_API_KEY,VISION_MODEL,TTS_BASE_URL,TTS_API_KEY,TTS_SPEECH_MODEL,MOCK_IMAGE&envDescription=Three%20required%20providers%20%2B%20optional%20TTS.%20Any%20OpenAI-compatible%20endpoint%20works%20for%20text%2Fvision%2Ftts.&envLink=https://github.com/zonghaoyuan/yume%23environment-variables)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/zonghaoyuan/infiplot&root-directory=apps/web&env=TEXT_BASE_URL,TEXT_API_KEY,TEXT_MODEL,IMAGE_BASE_URL,IMAGE_API_KEY,IMAGE_MODEL,VISION_BASE_URL,VISION_API_KEY,VISION_MODEL,TTS_BASE_URL,TTS_API_KEY,TTS_SPEECH_MODEL,MOCK_IMAGE&envDescription=Three%20required%20providers%20%2B%20optional%20TTS.%20Any%20OpenAI-compatible%20endpoint%20works%20for%20text%2Fvision%2Ftts.&envLink=https://github.com/zonghaoyuan/infiplot%23environment-variables)
 
 After deploy, set the environment variables (see below) in your Vercel project. Nine are required; TTS is optional (leave blank to run silently); `MOCK_IMAGE=true` skips image generation for cheap TTS-only testing. The Vercel project's **Root Directory** must be set to `apps/web` (the deploy button passes this; if you configure manually, set it in Project Settings).
 
@@ -81,7 +81,7 @@ pnpm dev
 ## Project layout
 
 ```
-yume/
+infiplot/
 ├── apps/web/              Next.js 16 app — pages + API routes (Vercel root)
 └── packages/
     ├── types/             shared TypeScript types
@@ -90,7 +90,7 @@ yume/
     └── engine/            multi-agent AI orchestration (open core)
 ```
 
-`packages/engine` is the open core — pure TS, no Next.js or browser dependency. Import it directly to build your own visual-novel front-end (Tauri, Electron, CLI, anywhere).
+`packages/engine` is the open core — pure TS, no Next.js or browser dependency. Import it directly to build your own interactive-narrative front-end (Tauri, Electron, CLI, anywhere).
 
 ---
 

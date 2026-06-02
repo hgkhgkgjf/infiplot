@@ -1,5 +1,5 @@
-import { startSession } from "@yume/engine";
-import type { StartRequest } from "@yume/types";
+import { startSession } from "@infiplot/engine";
+import type { StartRequest } from "@infiplot/types";
 import { NextResponse } from "next/server";
 import { loadEngineConfig } from "@/lib/config";
 

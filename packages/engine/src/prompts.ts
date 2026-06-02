@@ -3,7 +3,7 @@ import type {
   Character,
   Scene,
   Session,
-} from "@yume/types";
+} from "@infiplot/types";
 
 // ══════════════════════════════════════════════════════════════════════
 //  Multi-agent scene generation pipeline:

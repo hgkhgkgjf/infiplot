@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 /* ============================================================================
-   InfiPlot · 首页（云梦编辑式视觉风格 · 居中构图，呼应低保真原型）
+   InfiPlot · 首页（编辑式视觉风格 · 居中构图，呼应低保真原型）
    - 顶部 Header：左上角衬线 wordmark logo
    - Hero 控制区（居中）：标题 / prompt 输入框 + 开始 / 5 个类别选择器
    - 统一瀑布流（居中定宽）：7 张主推 + 16 张画廊，按性向整体 crossfade 切换
@@ -399,7 +399,7 @@ export default function HomePage() {
   const [prompt, setPrompt] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // 顶部使用提示：默认展示，用户可点 × 永久关闭（localStorage:yume:hintClosed）。
+  // 顶部使用提示：默认展示，用户可点 × 永久关闭（localStorage:infiplot:hintClosed）。
   const [hintClosed, setHintClosed] = useState(false);
 
   const styleRow = OPTS.findIndex((o) => o.modal);
@@ -432,7 +432,7 @@ export default function HomePage() {
 
   useEffect(() => {
     try {
-      if (localStorage.getItem("yume:hintClosed") === "1") setHintClosed(true);
+      if (localStorage.getItem("infiplot:hintClosed") === "1") setHintClosed(true);
     } catch {
       /* ignore */
     }
@@ -449,7 +449,7 @@ export default function HomePage() {
   const closeHint = () => {
     setHintClosed(true);
     try {
-      localStorage.setItem("yume:hintClosed", "1");
+      localStorage.setItem("infiplot:hintClosed", "1");
     } catch {
       /* ignore */
     }
@@ -496,7 +496,7 @@ export default function HomePage() {
     const audioEnabled = voice === "开启";
 
     sessionStorage.setItem(
-      "yume:custom",
+      "infiplot:custom",
       JSON.stringify({ worldSetting, styleGuide, audioEnabled }),
     );
     router.push("/play?custom=1");
@@ -610,7 +610,7 @@ export default function HomePage() {
             ))}
           </div>
 
-          {/* 使用提示：可被用户永久关闭（localStorage:yume:hintClosed） */}
+          {/* 使用提示：可被用户永久关闭（localStorage:infiplot:hintClosed） */}
           {!hintClosed && (
             <div className="relative mx-auto mt-10 md:mt-12 max-w-[640px] rounded-sm border border-clay-900/10 bg-cream-100/50 px-8 py-3.5">
               <p className="font-serif text-[13px] md:text-sm leading-relaxed text-clay-500">

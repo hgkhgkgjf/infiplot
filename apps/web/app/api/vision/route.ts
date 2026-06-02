@@ -1,5 +1,5 @@
-import { visionDecide } from "@yume/engine";
-import type { VisionRequest } from "@yume/types";
+import { visionDecide } from "@infiplot/engine";
+import type { VisionRequest } from "@infiplot/types";
 import { NextResponse } from "next/server";
 import { loadEngineConfig } from "@/lib/config";
 

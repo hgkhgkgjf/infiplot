@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Beat, BeatChoice } from "@yume/types";
+import type { Beat, BeatChoice } from "@infiplot/types";
 
 export type Phase =
   | "loading-first"        // first scene not yet rendered
@@ -439,7 +439,7 @@ export function PlayCanvas({
                   width: 30,
                   height: 30,
                   animation:
-                    "yume-ripple 1.6s cubic-bezier(0.16,1,0.3,1) infinite",
+                    "infiplot-ripple 1.6s cubic-bezier(0.16,1,0.3,1) infinite",
                 }}
               />
               <div

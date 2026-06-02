@@ -11,7 +11,7 @@ import type {
   StartResponse,
   VisionRequest,
   VisionResponse,
-} from "@yume/types";
+} from "@infiplot/types";
 import { annotateClick } from "./annotate";
 import { directInsertBeat, directScene } from "./director";
 import { synthesizeBeat } from "./voice";
