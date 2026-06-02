@@ -20,21 +20,23 @@ Free to play, no setup required: [infiplot.com](https://infiplot.com)
 
 ## 📸 Screenshots
 
+<sub><em>click any screenshot to view full size</em></sub>
+
 <table>
   <tr>
-    <td><img src="docs/screenshots/4.webp" width="280" alt="School rooftop scene"></td>
-    <td><img src="docs/screenshots/c3.webp" width="280" alt="Golden hour rooftop dialogue"></td>
-    <td><img src="docs/screenshots/c5.webp" width="280" alt="Sunset rooftop confession"></td>
+    <td><a href="docs/screenshots/4.webp"><img src="docs/screenshots/4.webp" width="280" alt="School rooftop scene"></a></td>
+    <td><a href="docs/screenshots/c3.webp"><img src="docs/screenshots/c3.webp" width="280" alt="Golden hour rooftop dialogue"></a></td>
+    <td><a href="docs/screenshots/c5.webp"><img src="docs/screenshots/c5.webp" width="280" alt="Sunset rooftop confession"></a></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/c7.webp" width="280" alt="Rooftop close-up choice"></td>
-    <td><img src="docs/screenshots/a4.webp" width="280" alt="Twilight rooftop drama"></td>
-    <td><img src="docs/screenshots/5.webp" width="280" alt="Cityscape evening scene"></td>
+    <td><a href="docs/screenshots/c7.webp"><img src="docs/screenshots/c7.webp" width="280" alt="Rooftop close-up choice"></a></td>
+    <td><a href="docs/screenshots/a4.webp"><img src="docs/screenshots/a4.webp" width="280" alt="Twilight rooftop drama"></a></td>
+    <td><a href="docs/screenshots/5.webp"><img src="docs/screenshots/5.webp" width="280" alt="Cityscape evening scene"></a></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/d2.webp" width="280" alt="Cyberpunk neon alley"></td>
-    <td><img src="docs/screenshots/f2.webp" width="280" alt="Night street anime scene"></td>
-    <td><img src="docs/screenshots/f5.webp" width="280" alt="Late-night encounter"></td>
+    <td><a href="docs/screenshots/d2.webp"><img src="docs/screenshots/d2.webp" width="280" alt="Cyberpunk neon alley"></a></td>
+    <td><a href="docs/screenshots/f2.webp"><img src="docs/screenshots/f2.webp" width="280" alt="Night street anime scene"></a></td>
+    <td><a href="docs/screenshots/f5.webp"><img src="docs/screenshots/f5.webp" width="280" alt="Late-night encounter"></a></td>
   </tr>
 </table>
 
