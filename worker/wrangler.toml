@@ -1,0 +1,16 @@
+# Cloudflare Worker — Runware image proxy.
+# See worker/src/index.js for what it does and why.
+#
+# Deploy:
+#   1. `npm i -g wrangler` (one-time)
+#   2. `wrangler login` (one-time, OAuth flow in browser)
+#   3. From this directory: `wrangler deploy`
+#   4. wrangler prints the deployed URL, e.g.
+#      https://infiplot-image-proxy.<your-cf-username>.workers.dev
+#   5. Set NEXT_PUBLIC_IMAGE_PROXY_URL=<that URL> in .env.local for dev
+#      and in Vercel project settings for prod.
+
+name = "infiplot-image-proxy"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+workers_dev = true

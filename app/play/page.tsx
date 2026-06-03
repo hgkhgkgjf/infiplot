@@ -40,33 +40,91 @@ const MUTED_STORAGE_KEY = "infiplot:muted";
 const IMAGE_PRELOAD_TIMEOUT_MS = 20000;
 
 // ──────────────────────────────────────────────────────────────────────
-//  Image preload — decode the Runware URL in memory before committing to
-//  React state, so when the <img> mounts, the browser cache is warm and
-//  rendering is instant. Without this the user sees a blank canvas during
-//  the Runware-CDN download (~1-3s) after /api/scene returns.
+//  Image fetch → blob URL — bulletproof against browser progressive paint.
 //
-//  Data URIs (MOCK_IMAGE mode) and prefetched-then-cached real URLs both
-//  resolve fast / instantly. Errors and timeouts resolve quietly — better
-//  to render a broken-image than to hang the play loop indefinitely.
+//  Why not a plain <img src={cdnUrl}>: Runware CDN returns weak cache headers
+//  (every <img> mount issues a fresh GET — confirmed in DevTools, status 200
+//  not "from disk cache"), so the Image() preload + decode() trick can warm
+//  HTTP cache but the actual <img> still streams bytes from network and
+//  paints row-by-row as they arrive.
+//
+//  Fix: fetch the bytes ourselves, materialize a blob: URL pointing at the
+//  fully-local copy, and only set the <img src> to that blob: URL. The <img>
+//  never sees a network-backed src, so there is no "字节还在路上" middle state
+//  and no progressive paint is possible. Trade-off: callers MUST revoke the
+//  blob URL when swapping it out, or the bytes leak in JS heap.
+//
+//  Failure mode: on network error / timeout we fall back to the original CDN
+//  URL so the <img> still attempts to render (with possible progressive paint
+//  — same as pre-fix behavior, never worse).
+//
+//  Data URIs (MOCK_IMAGE mode) are already local; passed through unchanged.
 // ──────────────────────────────────────────────────────────────────────
 
-function preloadImage(url: string): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const img = new Image();
-    const done = () => resolve();
-    const timer = setTimeout(done, IMAGE_PRELOAD_TIMEOUT_MS);
-    img.onload = () => {
-      clearTimeout(timer);
-      // .decode() forces the bitmap to be fully decoded before we proceed —
-      // without it, a slow decode could still cause a flash on first paint.
-      img.decode().then(done, done);
-    };
-    img.onerror = () => {
-      clearTimeout(timer);
-      done();
-    };
-    img.src = url;
-  });
+// Optional Cloudflare Workers proxy in front of Runware. Reason: Chrome's
+// direct fetch of im.runware.ai sometimes hits ERR_QUIC_PROTOCOL_ERROR
+// mid-stream, leaving the browser with partial PNG bytes that render
+// progressively. The Worker re-fetches Runware server-to-server (no QUIC
+// fragility) and serves the bytes over HTTP/2 — atomic and reliable.
+//
+// Inlined by Next.js at build time. Empty / unset → fall back to direct
+// fetch of the original URL (works fine when Runware's CDN cooperates,
+// and on browsers/networks where QUIC isn't flaky).
+const IMAGE_PROXY_BASE = (
+  process.env.NEXT_PUBLIC_IMAGE_PROXY_URL ?? ""
+).replace(/\/$/, "");
+
+function proxiedImageUrl(originalUrl: string): string {
+  if (!IMAGE_PROXY_BASE) return originalUrl;
+  // Data URIs (MOCK_IMAGE) are already local; proxy is irrelevant.
+  if (originalUrl.startsWith("data:")) return originalUrl;
+  // Only proxy real Runware CDN URLs — keeps the Worker's whitelist tight
+  // and dodges the proxy hop for any other origin we might add later.
+  if (!originalUrl.startsWith("https://im.runware.ai/")) return originalUrl;
+  return `${IMAGE_PROXY_BASE}/?url=${encodeURIComponent(originalUrl)}`;
+}
+
+async function fetchImageAsBlobUrl(url: string): Promise<string> {
+  if (url.startsWith("data:")) return url;
+  // Cache keys (blobUrlCache) stay on the original Runware URL — the proxy
+  // is an internal fetch detail, callers shouldn't need to think about it.
+  const fetchUrl = proxiedImageUrl(url);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), IMAGE_PRELOAD_TIMEOUT_MS);
+  try {
+    const r = await fetch(fetchUrl, { signal: ctrl.signal });
+    if (!r.ok) return url;
+    const blob = await r.blob();
+    return URL.createObjectURL(blob);
+  } catch {
+    return url;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Module-level cache so speculative prefetches and the eventual commit share
+// the same in-flight fetch — no double-download per scene. Keyed by the
+// ORIGINAL CDN URL (the blob: URL it resolves to is the value). Persists for
+// the page's lifetime; entries are explicitly revoked when the scene swaps.
+const blobUrlCache = new Map<string, Promise<string>>();
+
+function getOrCreateBlobUrl(originalUrl: string): Promise<string> {
+  let p = blobUrlCache.get(originalUrl);
+  if (!p) {
+    p = fetchImageAsBlobUrl(originalUrl);
+    blobUrlCache.set(originalUrl, p);
+  }
+  return p;
+}
+
+function revokeBlobUrlFor(originalUrl: string): void {
+  const p = blobUrlCache.get(originalUrl);
+  if (!p) return;
+  blobUrlCache.delete(originalUrl);
+  p.then((u) => {
+    if (u.startsWith("blob:")) URL.revokeObjectURL(u);
+  }).catch(() => {});
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -164,11 +222,11 @@ function prefetchScenePath(
     }
     const data = (await res.json()) as SceneResponse;
 
-    // Warm the browser's HTTP + image-decode cache for this URL so when the
-    // player eventually picks this choice and we render the <img>, it's
-    // instant. Don't await — let the bytes stream in the background; the
-    // transition path will await its own preloadImage() before committing.
-    void preloadImage(data.imageUrl);
+    // Kick off the blob fetch for this URL so when the player eventually
+    // picks this choice, transitioning is a no-op cache lookup instead of a
+    // fresh CDN download. Don't await — let it run in the background; the
+    // transition path awaits the same cached promise via getOrCreateBlobUrl.
+    void getOrCreateBlobUrl(data.imageUrl);
 
     // Recursive: if the resulting scene has exactly one change-scene exit,
     // it is a must-pass node — prefetch its child too.
@@ -288,6 +346,10 @@ function PlayInner() {
   const currentSceneRef = useRef<Scene | null>(null);
   const currentBeatRef = useRef<Beat | null>(null);
   const visitedBeatsRef = useRef<string[]>([]);
+  // Original (CDN) URL of the currently-rendered scene image. Used as the key
+  // to revoke its blob: URL when the scene swaps. We track the ORIGINAL URL,
+  // not the blob URL, because blobUrlCache is keyed by original URL.
+  const lastImageOriginalUrlRef = useRef<string | null>(null);
 
   const currentBeat = useMemo<Beat | null>(() => {
     if (!currentScene || !currentBeatId) return null;
@@ -580,10 +642,11 @@ function PlayInner() {
 
     fetchStart
       .then(async (data) => {
-        // Decode the Runware image in memory before committing to state, so
-        // the <img> renders instantly when it mounts (same rationale as the
-        // performSceneTransition path).
-        await preloadImage(data.imageUrl);
+        // Pull the full image bytes into a local blob: URL before committing
+        // to state. The <img> then mounts pointed at a fully-local blob, which
+        // the browser paints atomically — no row-by-row "层层加载".
+        const blobUrl = await getOrCreateBlobUrl(data.imageUrl);
+        lastImageOriginalUrlRef.current = data.imageUrl;
 
         const initial: Session = {
           id: data.sessionId,
@@ -604,7 +667,7 @@ function PlayInner() {
         setSession(initial);
         setCurrentScene(data.scene);
         setCurrentBeatId(data.scene.entryBeatId);
-        setImageUrl(data.imageUrl);
+        setImageUrl(blobUrl);
         // beatAudioMap is populated lazily by the per-beat fetch effect once
         // currentScene becomes non-null (see fetchBeatAudio).
         setPhase("ready");
@@ -639,6 +702,9 @@ function PlayInner() {
   // stop paying for background scene/image generation. Empty deps → fires only
   // on unmount; it must NOT run on scene transitions, which rely on
   // consumeChoice keeping the re-rooted survivor prefetches alive.
+  // Also revoke any surviving blob: URLs so their bytes can be GC'd — the
+  // module-level blobUrlCache outlives the component but its entries should
+  // not survive the page navigation that unmounts us.
   useEffect(() => {
     const pool = poolRef.current;
     const beatAborts = beatAudioAbortRef.current;
@@ -646,6 +712,9 @@ function PlayInner() {
       clearPool(pool);
       for (const c of beatAborts.values()) c.abort();
       beatAborts.clear();
+      for (const [originalUrl] of blobUrlCache) {
+        revokeBlobUrlFor(originalUrl);
+      }
     };
   }, []);
 
@@ -672,13 +741,21 @@ function PlayInner() {
       const base = sessionRef.current;
       if (!base) throw new Error("Session lost mid-transition");
 
-      // Wait for the browser to download + decode the Runware-hosted image
-      // BEFORE committing it to state, so the <img> renders instantly when it
-      // mounts. For prefetched scenes the preloadImage call inside
-      // prefetchScenePath has already warmed the cache, so this resolves
-      // almost immediately. For cold transitions we trade an extra ~1-3s of
-      // "transitioning" overlay for an image-pop-in-from-blank flash.
-      await preloadImage(result.imageUrl);
+      // Pull full image bytes into a local blob: URL before committing. For
+      // prefetched scenes the speculative getOrCreateBlobUrl in
+      // prefetchScenePath already has this in flight (often resolved), so
+      // this is a near-instant cache lookup. For cold transitions we eat the
+      // CDN download time under the "transitioning" overlay — same cost as
+      // before, but the <img> never sees a network-backed src and therefore
+      // can't paint progressively.
+      const blobUrl = await getOrCreateBlobUrl(result.imageUrl);
+      // Revoke the previous scene's blob (no longer rendered) to release JS
+      // heap. New scene's original URL takes its place as "current".
+      const priorOriginal = lastImageOriginalUrlRef.current;
+      if (priorOriginal && priorOriginal !== result.imageUrl) {
+        revokeBlobUrlFor(priorOriginal);
+      }
+      lastImageOriginalUrlRef.current = result.imageUrl;
 
       const closedHistory = base.history.map((h, i, arr) =>
         i === arr.length - 1
@@ -701,7 +778,7 @@ function PlayInner() {
       setSession(newSession);
       setCurrentScene(result.scene);
       setCurrentBeatId(result.scene.entryBeatId);
-      setImageUrl(result.imageUrl);
+      setImageUrl(blobUrl);
       // beatAudioMap reset + per-beat fetches kicked off by the scene effect.
       setLastExitLabel(exitLabel);
       setPhase("ready");
