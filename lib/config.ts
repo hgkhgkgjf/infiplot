@@ -22,8 +22,8 @@ function loadTtsConfig(): TtsConfig | undefined {
   return { baseUrl, apiKey, speechModel };
 }
 
-export function loadEngineConfig(): EngineConfig {
-  return {
+export function loadEngineConfig(headers?: Headers): EngineConfig {
+  const config: EngineConfig = {
     text: {
       baseUrl: readVar("TEXT_BASE_URL"),
       apiKey: readVar("TEXT_API_KEY"),
@@ -42,4 +42,30 @@ export function loadEngineConfig(): EngineConfig {
     tts: loadTtsConfig(),
     mockImage: readOptionalVar("MOCK_IMAGE") === "true",
   };
+
+  const byoHeader = headers?.get("x-byo-api");
+  if (byoHeader) {
+    try {
+      const byo = JSON.parse(byoHeader);
+      if (byo.llm?.enabled) {
+        if (byo.llm.endpoint) config.text.baseUrl = byo.llm.endpoint;
+        if (byo.llm.apiKey) config.text.apiKey = byo.llm.apiKey;
+        if (byo.llm.model) config.text.model = byo.llm.model;
+
+        // Also override vision if llm is enabled
+        if (byo.llm.endpoint) config.vision.baseUrl = byo.llm.endpoint;
+        if (byo.llm.apiKey) config.vision.apiKey = byo.llm.apiKey;
+        if (byo.llm.model) config.vision.model = byo.llm.model;
+      }
+      if (byo.painter?.enabled) {
+        if (byo.painter.endpoint) config.image.baseUrl = byo.painter.endpoint;
+        if (byo.painter.apiKey) config.image.apiKey = byo.painter.apiKey;
+        if (byo.painter.model) config.image.model = byo.painter.model;
+      }
+    } catch (e) {
+      console.error("Failed to parse x-byo-api header in loadEngineConfig:", e);
+    }
+  }
+
+  return config;
 }

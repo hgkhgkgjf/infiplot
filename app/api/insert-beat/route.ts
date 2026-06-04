@@ -22,7 +22,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const config = loadEngineConfig();
+    const config = loadEngineConfig(req.headers);
     const result = await requestInsertBeat(config, body);
     return NextResponse.json(result);
   } catch (err) {
