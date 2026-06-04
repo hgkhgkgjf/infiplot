@@ -276,6 +276,18 @@ export function PlayCanvas({
     });
   }
 
+  // Card swallows its own clicks so they never fall through to the image's
+  // vision (识图) trigger: while typing a click completes the text, a continue
+  // beat advances, and a choice beat stays inert (player must pick an option).
+  function handleCardClick() {
+    if (phase !== "ready" || !beat) return;
+    if (!typingDone) {
+      skipTypewriter();
+      return;
+    }
+    if (beat.next.type === "continue") onAdvance();
+  }
+
   const interactive = phase === "ready" && !!imageUrl;
   const dimmed = phase === "transitioning";
 
@@ -366,7 +378,8 @@ export function PlayCanvas({
 
               {(beat.narration || beat.line) && (
                 <div
-                  className="pointer-events-none mx-[2%] mb-[2%] px-[3%] py-[2.2%] relative"
+                  className="pointer-events-auto mx-[2%] mb-[2%] px-[3%] py-[2.2%] relative"
+                  onClick={handleCardClick}
                   style={{
                     background: "rgba(14, 10, 6, 0.72)",
                     border: "1.5px solid rgba(175, 138, 72, 0.60)",
