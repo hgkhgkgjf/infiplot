@@ -1,6 +1,7 @@
 import type {
   BeatActiveCharacter,
   Character,
+  Orientation,
   Scene,
   Session,
   StoryState,
@@ -803,6 +804,7 @@ export function buildPainterPrompt(
   integratedPrompt: string,
   styleGuide: string,
   characters: { name: string; visualDescription?: string }[],
+  orientation: Orientation = "landscape",
 ): string {
   const archetypeBlock = characters
     .filter((c) => c.visualDescription)
@@ -813,7 +815,15 @@ export function buildPainterPrompt(
     ? `\n\nCHARACTER ARCHETYPES (anchor identity, outfit, and style across scenes — keep each character visually identical to their archetype):\n${archetypeBlock}`
     : "";
 
-  return `Generate a cinematic landscape background illustration, 16:9 widescreen (1792x1024).
+  const portrait = orientation === "portrait";
+  const header = portrait
+    ? "Generate a cinematic vertical (portrait) background illustration, 9:16 tall format (1024x1792)."
+    : "Generate a cinematic landscape background illustration, 16:9 widescreen (1792x1024).";
+  const orientationRule = portrait
+    ? "- 9:16 PORTRAIT orientation — taller than wide. No landscape or square output."
+    : "- 16:9 LANDSCAPE orientation — wider than tall. No portrait or square output.";
+
+  return `${header}
 
 ART STYLE: ${styleGuide}
 
@@ -826,7 +836,7 @@ STRICT RULES — NEVER violate these:
 - DO NOT render any Chinese or English text anywhere in the image.
 - DO NOT add any HUD, interface chrome, or game UI elements.
 - The image is a PURE BACKGROUND SCENE ONLY. All UI will be added as HTML on top.
-- 16:9 LANDSCAPE orientation — wider than tall. No portrait or square output.
+${orientationRule}
 - Leave the bottom 35% of the frame relatively uncluttered (darker or softer) so overlaid UI panels remain readable.
 - Characters or key scene elements should be positioned in the upper 65% of the frame.
 - Maintain character identity exactly as specified in CHARACTER ARCHETYPES — same face, same hairstyle, same outfit across every scene.

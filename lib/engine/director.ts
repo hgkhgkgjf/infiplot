@@ -1,4 +1,5 @@
 import { chat } from "@infiplot/ai-client";
+import { coerceOrientation } from "@infiplot/types";
 import type {
   Beat,
   Character,
@@ -332,6 +333,10 @@ export async function directScene(
   // filtered to those now in the registry, so the archetype block covers them.
   const onStageCharacters = characters.filter((c) => plan.cast.includes(c.name));
 
+  // Session-locked orientation (set at session start). Threads into both the
+  // Painter prompt's framing rules and the generated image's pixel dimensions.
+  const orientation = coerceOrientation(session.orientation);
+
   const tPainter = Date.now();
   const painted = await runPainter(
     config,
@@ -341,6 +346,7 @@ export async function directScene(
       onStageCharacters,
       priorSceneImage: priorSceneReference,
       styleReferenceImage: session.styleReferenceImage,
+      orientation,
     },
     entryBeatForPaint,
   );
@@ -403,6 +409,7 @@ export async function directScene(
     sceneKey: plan.sceneKey,
     imageUuid: painted.kind === "real" ? painted.imageUuid : undefined,
     imageUrl: painted.imageUrl,
+    orientation,
   };
 
   // Merge the Writer's volatile memory rewrite onto the carried bible so the

@@ -1,7 +1,7 @@
 import { generateImage as generateImageSdk } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import type { ProviderConfig, ProviderProtocol } from "@infiplot/types";
+import type { Orientation, ProviderConfig, ProviderProtocol } from "@infiplot/types";
 import { fetchWithRetry } from "./fetchWithRetry";
 import { normalizeBaseUrl } from "./normalizeUrl";
 
@@ -54,6 +54,13 @@ export type GenerateImageOptions = {
   referenceImages?: string[];
   /** 0–1, FLUX needs ≥ 0.8 to actually have an effect. Runware-only. */
   strength?: number;
+  /**
+   * Output aspect, locked per session. "portrait" → 9:16 vertical for mobile;
+   * default/"landscape" → 16:9 widescreen. Mapped to each provider's nearest
+   * supported size: Runware 1024×1792, OpenAI-compatible REST 1024x1792,
+   * native gpt-image 1024x1536, Gemini aspectRatio 9:16.
+   */
+  orientation?: Orientation;
 };
 
 export type GenerateImageResult = {
@@ -120,7 +127,7 @@ export async function generateImage(
       );
     case "openai_compatible":
     default:
-      return generateImageOpenAiCompatible(config, prompt);
+      return generateImageOpenAiCompatible(config, prompt, options);
   }
 }
 
@@ -147,14 +154,15 @@ async function generateImageViaAiSdk(
   const promptArg =
     refs.length > 0 ? { text: prompt, images: refs } : prompt;
 
-  // OpenAI's image models take an explicit `size`; gpt-image's widest landscape
-  // option is 1536x1024. Gemini takes an `aspectRatio` instead.
+  // Session-locked aspect. gpt-image takes an explicit `size` (portrait /
+  // landscape options are 1024x1536 / 1536x1024); Gemini takes an `aspectRatio`.
+  const portrait = options?.orientation === "portrait";
   const { image } = await generateImageSdk({
     model: imageModel,
     prompt: promptArg,
     ...(protocol === "openai"
-      ? { size: "1536x1024" as `${number}x${number}` }
-      : { aspectRatio: "16:9" as `${number}:${number}` }),
+      ? { size: (portrait ? "1024x1536" : "1536x1024") as `${number}x${number}` }
+      : { aspectRatio: (portrait ? "9:16" : "16:9") as `${number}:${number}` }),
   });
 
   return {
@@ -169,6 +177,7 @@ async function generateImageViaAiSdk(
 async function generateImageOpenAiCompatible(
   config: ProviderConfig,
   prompt: string,
+  options?: GenerateImageOptions,
 ): Promise<GenerateImageResult> {
   const base = normalizeBaseUrl(config.baseUrl, "openai_compatible");
   const endpoint = `${base}/images/generations`;
@@ -186,7 +195,8 @@ async function generateImageOpenAiCompatible(
       model: config.model,
       prompt: prompt,
       n: 1,
-      size: "1792x1024", // Use horizontal size (16:9)
+      // Session-locked aspect (16:9 default, 9:16 portrait for mobile).
+      size: options?.orientation === "portrait" ? "1024x1792" : "1792x1024",
     }),
   });
 
@@ -221,13 +231,18 @@ async function generateImageRunware(
 ): Promise<GenerateImageResult> {
   const url = normalizeBaseUrl(config.baseUrl, "runware");
 
+  // Session-locked output aspect. Image models emit a FIXED pixel size; CSS
+  // object-fit on the client adapts this frame to the exact device/window. Both
+  // dimensions stay a multiple of 64 as FLUX requires.
+  const portrait = options?.orientation === "portrait";
+
   const task: Record<string, unknown> = {
     taskType: "imageInference",
     taskUUID: crypto.randomUUID(),
     model: config.model,
     positivePrompt: prompt,
-    width: 1792,
-    height: 1024,
+    width: portrait ? 1024 : 1792,
+    height: portrait ? 1792 : 1024,
     steps: 4,
     CFGScale: 3.5,
     numberResults: 1,

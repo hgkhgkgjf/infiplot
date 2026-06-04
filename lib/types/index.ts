@@ -41,6 +41,23 @@ export type BeatChoiceEffect =
   | { kind: "change-scene"; nextSceneSeed: string };
 
 // ──────────────────────────────────────────────────────────────────────
+//  Orientation — session-wide image aspect, locked at session start.
+//  "landscape" → 16:9 (1792×1024), the default for desktop / mobile-landscape.
+//  "portrait"  → 9:16 (1024×1792), painted for mobile users holding the phone
+//  upright so the scene fills the screen instead of letterboxing a widescreen
+//  image. CSS object-fit then adapts the 9:16 frame to the exact device size.
+// ──────────────────────────────────────────────────────────────────────
+
+export type Orientation = "portrait" | "landscape";
+
+/** Normalize an untrusted orientation value (from a request body, or a
+ *  persisted session that predates the field) to a valid Orientation.
+ *  Anything other than "portrait" falls back to "landscape" (back-compat). */
+export function coerceOrientation(value: unknown): Orientation {
+  return value === "portrait" ? "portrait" : "landscape";
+}
+
+// ──────────────────────────────────────────────────────────────────────
 //  Scene — one background image + a graph of beats.
 //  The Director emits an entire Scene per call; the player navigates
 //  through its beats locally with zero network until exiting.
@@ -75,6 +92,12 @@ export type Scene = {
    * Runware URL — the client renders both forms transparently.
    */
   imageUrl?: string;
+  /**
+   * Orientation this scene's image was painted in. Mirrors the session's
+   * locked orientation; recorded per-scene so the client can pick the right
+   * intrinsic dimensions / object-fit even across legacy or mixed history.
+   */
+  orientation?: Orientation;
 };
 
 export type SceneExit =
@@ -251,6 +274,12 @@ export type Session = {
    * payload small for /api/scene round-trips.
    */
   styleReferenceImage?: string;
+  /**
+   * Session-wide image orientation, locked at session start from the client's
+   * device + orientation and carried on every /api/scene call so all scenes
+   * share one aspect ratio. Absent → "landscape" (back-compat).
+   */
+  orientation?: Orientation;
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -337,6 +366,12 @@ export type StartRequest = {
    * drops `config.tts` so the engine skips all server-side TTS work.
    */
   clientTts?: boolean;
+  /**
+   * Device orientation chosen at session start. "portrait" makes the engine
+   * paint 9:16 vertical scene images (mobile, held upright); "landscape"
+   * (default) keeps 16:9 widescreen. Locked for the whole session.
+   */
+  orientation?: Orientation;
 };
 
 // /api/parse-style-image — vision LLM extracts a textual painting-style
