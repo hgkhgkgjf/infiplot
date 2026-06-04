@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { track } from "@/lib/analytics";
 
 /* ============================================================================
    InfiPlot · 首页（编辑式视觉风格 · 居中构图，呼应低保真原型）
@@ -1008,9 +1009,11 @@ function StyleModal({
       // 用户事后还可以手动改 draft（仍是 textarea）。
       setDraft(data.stylePrompt);
       setCustomStyleRefImage(resized);
+      track("style_image_upload", { ok: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "解析失败";
       setParseError(msg);
+      track("style_image_upload", { ok: false });
     } finally {
       setParsing(false);
     }
@@ -1524,6 +1527,17 @@ export default function HomePage() {
     const styleReferenceImage =
       artStyle === "自定义" && customStyleRefImage ? customStyleRefImage : undefined;
 
+    track("game_start", {
+      source: "prompt",
+      gender,
+      art_style: artStyle,
+      plot_style: plotStyle,
+      pacing: pace,
+      tts: audioEnabled,
+      has_prompt: prompt.trim().length > 0,
+      has_style_ref: Boolean(styleReferenceImage),
+    });
+
     sessionStorage.setItem(
       "infiplot:custom",
       JSON.stringify({ worldSetting, styleGuide, audioEnabled, styleReferenceImage }),
@@ -1533,6 +1547,9 @@ export default function HomePage() {
 
   const stories = STORIES[galleryGender];
   const imgPrefix = galleryGender === "女性向" ? "f" : "m";
+  const analyticsOn = Boolean(
+    process.env.NEXT_PUBLIC_UMAMI_SRC && process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID,
+  );
 
   // 点卡片 = 直接开始这张卡的故事，零等待：跳 /play?card=m0/f0... 由 /play
   // 页面从 /home/firstact/{name}.json 静态文件加载预烘焙好的首幕（含 scene /
@@ -1547,6 +1564,12 @@ export default function HomePage() {
       "infiplot:custom",
       JSON.stringify({ worldSetting: "", styleGuide: "", audioEnabled }),
     );
+    track("game_start", {
+      source: "curated",
+      gender: galleryGender,
+      tts: audioEnabled,
+      card: `${imgPrefix}${idx}`,
+    });
     router.push(`/play?card=${imgPrefix}${idx}`);
   };
 
@@ -1778,8 +1801,21 @@ export default function HomePage() {
           目前，内测期间生成的内容不会被保存，如有需要，请通过录屏或截图等方式保存游玩体验，并记录下生成故事时的提示词与风格选项等。
           <br />
           AI 生成的内容不代表本团队立场。
-          <br />
-          本站使用开源的 Umami 进行隐私友好的匿名访问统计：不使用 Cookie、不收集个人信息、不做跨站追踪。
+          {analyticsOn && (
+            <>
+              <br />
+              本站使用开源的{" "}
+              <a
+                href="https://umami.is/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-clay-900/20 underline-offset-2 transition-colors hover:text-clay-700"
+              >
+                Umami
+              </a>{" "}
+              进行隐私友好的匿名访问与交互统计：不使用 Cookie、不收集个人信息、不发送任何您输入的内容、不做跨站追踪。
+            </>
+          )}
         </p>
       </section>
 
@@ -1794,7 +1830,10 @@ export default function HomePage() {
         <StyleModal
           items={OPTS[styleRow]!.items}
           value={sel[styleRow] ?? 0}
-          onPick={(i) => setSel((s) => s.map((v, j) => (j === styleRow ? i : v)))}
+          onPick={(i) => {
+            track("art_style_select", { style: OPTS[styleRow]!.items[i] ?? String(i) });
+            setSel((s) => s.map((v, j) => (j === styleRow ? i : v)));
+          }}
           onClose={() => setStyleOpen(false)}
           customStyleGuide={customStyleGuide}
           setCustomStyleGuide={setCustomStyleGuide}

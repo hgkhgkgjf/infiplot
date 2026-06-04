@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { track } from "@/lib/analytics";
 
 export function CustomForm() {
   const router = useRouter();
@@ -22,6 +23,7 @@ export function CustomForm() {
       "infiplot:custom",
       JSON.stringify({ worldSetting, styleGuide }),
     );
+    track("game_start", { source: "custom" });
     router.push("/play?custom=1");
   }
 
