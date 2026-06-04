@@ -48,6 +48,14 @@ export function TtsKeyModal({
   const [showKey, setShowKey] = useState(false);
   const [shown, setShown] = useState(false);
   const alreadyConfigured = initial != null;
+  // Soft guard: tp- keys belong to Token Plan, sk- to pay-as-you-go. A
+  // mismatched pairing hits the wrong endpoint → guaranteed auth failure →
+  // silent playback (the very symptom BYO exists to kill). Warn, but never
+  // block: prefix conventions could change and a hard gate would lock out an
+  // otherwise-valid key.
+  const expectedPrefix = keyType === "payg" ? "sk-" : "tp-";
+  const prefixMismatch =
+    apiKey.trim().length > 0 && !apiKey.trim().startsWith(expectedPrefix);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => setShown(true));
@@ -214,6 +222,14 @@ export function TtsKeyModal({
                 />
               </button>
             </div>
+            {prefixMismatch && (
+              <span className="flex items-start gap-1.5 text-[11px] leading-relaxed text-ember-500">
+                <i className="fa-solid fa-triangle-exclamation mt-0.5 text-[10px]" />
+                此 Key 不是 {expectedPrefix} 开头，可能与所选「
+                {keyType === "payg" ? "按量付费 Pay-as-you-go" : "套餐 Token Plan"}
+                」类型不符，请确认是否填错。
+              </span>
+            )}
             <a
               href={TTS_KEY_DOC_URL}
               target="_blank"

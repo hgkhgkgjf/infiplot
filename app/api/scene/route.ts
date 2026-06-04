@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   try {
     const base = loadEngineConfig(req.headers);
     // See StartRequest.clientTts — BYO clients synth in-browser, so drop server TTS.
-    const config = body.clientTts ? { ...base, tts: undefined } : base;
+    const config = body.clientTts === true ? { ...base, tts: undefined } : base;
     const result = await requestScene(config, body);
     return NextResponse.json(result);
   } catch (err) {
