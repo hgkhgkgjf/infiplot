@@ -3,6 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { track } from "@/lib/analytics";
+import {
+  ART_STYLES,
+  GENDERS,
+  PACINGS,
+  PLOT_STYLES,
+  type Gender,
+} from "@/lib/options";
 
 /* ============================================================================
    InfiPlot · 首页（编辑式视觉风格 · 居中构图，呼应低保真原型）
@@ -20,8 +27,6 @@ import { useEffect, useRef, useState } from "react";
    - 项目介绍（题跋式排版）
    ========================================================================== */
 
-
-type Gender = "男性向" | "女性向";
 
 const EXAMPLE_PHRASES: Record<Gender, string[]> = {
   男性向: [
@@ -45,33 +50,11 @@ type Opt = {
 };
 
 const OPTS: Opt[] = [
-  { label: "性向", items: ["男性向", "女性向"] },
-  {
-    label: "绘画风格",
-    modal: true,
-    items: [
-      "自动",
-      "自定义",
-      "京阿尼细腻日常",
-      "新海诚唯美光影",
-      "Galgame CG",
-      "3D 动漫电影",
-      "赛博朋克",
-      "蒸汽波",
-      "吉卜力治愈手绘",
-      "哥特庄园",
-      "废土科幻",
-      // 以下为小众/区域性画风，留作长尾选项
-      "古典厚涂油画",
-      "极简中国水墨",
-      "浮世绘木刻",
-      "莫高窟壁画",
-      "波斯细密画",
-    ],
-  },
-  { label: "剧情风格", items: ["平铺直叙", "多线转折", "悬疑烧脑", "治愈日常"], defaultIndex: 1 },
+  { label: "性向", items: [...GENDERS] },
+  { label: "绘画风格", modal: true, items: [...ART_STYLES] },
+  { label: "剧情风格", items: [...PLOT_STYLES], defaultIndex: 1 },
   { label: "语音配音", items: ["关闭", "开启"], defaultIndex: 1 },
-  { label: "内容节奏", items: ["慢热细腻", "紧凑爽快"], defaultIndex: 1 },
+  { label: "内容节奏", items: [...PACINGS], defaultIndex: 1 },
 ];
 
 type StoryContent = { title: string; outline: string; style: string; tags: string[] };
@@ -1475,10 +1458,10 @@ export default function HomePage() {
     // 不会再出现「点开始 → 剧情和占位文字毫无关系」的体验断层。
     const userPrompt =
       prompt.trim() || (phrases[phraseIdx] ?? "").trim();
-    const artStyle = OPTS[1]!.items[sel[1] ?? 0]!;
-    const plotStyle = OPTS[2]!.items[sel[2] ?? 1]!;
+    const artStyle = ART_STYLES[sel[1] ?? 0] ?? "自动";
+    const plotStyle = PLOT_STYLES[sel[2] ?? 1] ?? "多线转折";
     const voice = OPTS[3]!.items[sel[3] ?? 1]!;
-    const pace = OPTS[4]!.items[sel[4] ?? 1]!;
+    const pace = PACINGS[sel[4] ?? 1] ?? "紧凑爽快";
 
     // worldSetting 顺序很重要：玩家输入若存在，必须放在最前面、单独成段、
     // 用强指令包住，否则模型会把它当成夹在风格说明里的背景参考、扩写出
@@ -1831,7 +1814,7 @@ export default function HomePage() {
           items={OPTS[styleRow]!.items}
           value={sel[styleRow] ?? 0}
           onPick={(i) => {
-            track("art_style_select", { style: OPTS[styleRow]!.items[i] ?? String(i) });
+            track("art_style_select", { style: ART_STYLES[i] ?? "自动" });
             setSel((s) => s.map((v, j) => (j === styleRow ? i : v)));
           }}
           onClose={() => setStyleOpen(false)}

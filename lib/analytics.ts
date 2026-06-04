@@ -10,6 +10,8 @@
 // indices, counts and booleans — that is what keeps these events as
 // privacy-friendly as the cookieless page-view baseline.
 
+import type { ArtStyle, Gender, Pacing, PlotStyle } from "./options";
+
 declare global {
   interface Window {
     umami?: {
@@ -21,23 +23,24 @@ declare global {
 // Per-event payload schema. Fixing each event's allowed fields turns the RULE
 // above into a compile-time guarantee: an event simply has no slot for a prompt,
 // world/style guide or vision string, so free text can't be attached by mistake
-// (a bare `Record<string, string>` would happily accept it). Keep every field an
-// enum, index, count or boolean. `never` marks events that carry no payload.
+// (a bare `Record<string, string>` would happily accept it). Every field is a
+// literal union (shared with the selector UI via ./options), index, count or
+// boolean — never a bare `string`. `never` marks events that carry no payload.
 type AnalyticsEventData = {
   game_start:
     | {
         source: "prompt";
-        gender: string;
-        art_style: string;
-        plot_style: string;
-        pacing: string;
+        gender: Gender;
+        art_style: ArtStyle;
+        plot_style: PlotStyle;
+        pacing: Pacing;
         tts: boolean;
         has_prompt: boolean;
         has_style_ref: boolean;
       }
-    | { source: "curated"; gender: string; tts: boolean; card: string }
+    | { source: "curated"; gender: Gender; tts: boolean; card: `${"m" | "f"}${number}` }
     | { source: "custom" };
-  art_style_select: { style: string };
+  art_style_select: { style: ArtStyle };
   style_image_upload: { ok: boolean };
   scene_reached: { scene_index: number };
   choice_select: {
