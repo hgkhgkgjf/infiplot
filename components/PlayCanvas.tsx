@@ -505,7 +505,7 @@ export function PlayCanvas({
               <span className="text-[9px] smallcaps text-clay-400 tracking-[0.2em] font-sans">
                 ✦ 故 · 事 · 预 · 告 ✦
               </span>
-              <p className="font-serif leading-[2] text-clay-700 text-[13px] md:text-[15px] italic whitespace-pre-wrap text-left w-full">
+              <p className="font-serif leading-[2] text-clay-700 text-[13px] md:text-[15px] italic whitespace-pre-wrap">
                 {typedTeaser}
               </p>
               <div className="mt-2 md:mt-4 flex items-center gap-2.5">
