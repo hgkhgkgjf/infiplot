@@ -26,6 +26,7 @@ import type {
   StartResponse,
   VisionResponse,
 } from "@infiplot/types";
+import { track } from "@/lib/analytics";
 
 const MUTED_STORAGE_KEY = "infiplot:muted";
 
@@ -373,6 +374,21 @@ function PlayInner() {
     mutedRef.current = muted;
   }, [muted]);
 
+  // Coarse liveness ping for active-time analytics. /play is a single SPA
+  // route, so page views alone read as ~0 duration; a 30s heartbeat (only
+  // while the tab is visible) gives Umami the timestamps to derive real
+  // engaged time. Content-free — no payload. The interval is never even
+  // scheduled unless the tracker is configured, so it's zero work when off.
+  useEffect(() => {
+    if (!process.env.NEXT_PUBLIC_UMAMI_SRC || !process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") track("play_heartbeat");
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // Whenever currentBeatId changes, append it to visited (skip consecutive dups)
   useEffect(() => {
     if (!currentBeatId) return;
@@ -472,6 +488,7 @@ function PlayInner() {
 
   // ── Mute persistence (read is via the useState lazy initializer above) ─
   const toggleMuted = useCallback(() => {
+    track("tts_toggle", { muted: !mutedRef.current });
     setMuted((prev) => {
       const next = !prev;
       try {
@@ -507,6 +524,7 @@ function PlayInner() {
   // ── Presentation mode toggle ─────────────────────────────────────────
   const togglePresentation = useCallback(async () => {
     const entering = !presentation;
+    track("fullscreen_toggle", { on: entering });
     if (entering) {
       try {
         if (!document.fullscreenElement) {
@@ -671,6 +689,7 @@ function PlayInner() {
         // beatAudioMap is populated lazily by the per-beat fetch effect once
         // currentScene becomes non-null (see fetchBeatAudio).
         setPhase("ready");
+        track("scene_reached", { scene_index: initial.history.length });
       })
       .catch((e) => setError(String(e)));
   }, [params, router]);
@@ -782,6 +801,7 @@ function PlayInner() {
       // beatAudioMap reset + per-beat fetches kicked off by the scene effect.
       setLastExitLabel(exitLabel);
       setPhase("ready");
+      track("scene_reached", { scene_index: newSession.history.length });
     } catch (e) {
       if ((e as { name?: string }).name === "AbortError") {
         setPhase("ready");
@@ -794,6 +814,19 @@ function PlayInner() {
 
   function onSelectChoice(choice: BeatChoice) {
     if (phase !== "ready" || !session || !currentScene) return;
+
+    const beatNext = currentBeatRef.current?.next;
+    const choiceIndex =
+      beatNext?.type === "choice"
+        ? beatNext.choices.findIndex((c) => c.id === choice.id)
+        : -1;
+    if (choiceIndex >= 0) {
+      track("choice_select", {
+        scene_index: session.history.length,
+        choice_index: choiceIndex,
+        kind: choice.effect.kind,
+      });
+    }
 
     if (choice.effect.kind === "advance-beat") {
       // Pure local jump. No network. No pool changes.
@@ -863,6 +896,7 @@ function PlayInner() {
         throw new Error(j.error ?? visionRes.statusText);
       }
       const decision = (await visionRes.json()) as VisionResponse;
+      track("vision_click", { result: decision.classify });
 
       if (decision.classify === "insert-beat") {
         setPhase("inserting-beat");

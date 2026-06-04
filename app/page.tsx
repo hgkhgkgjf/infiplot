@@ -2,6 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { track } from "@/lib/analytics";
+import {
+  ART_STYLES,
+  GENDERS,
+  PACINGS,
+  PLOT_STYLES,
+  type Gender,
+} from "@/lib/options";
 
 /* ============================================================================
    InfiPlot · 首页（编辑式视觉风格 · 居中构图，呼应低保真原型）
@@ -19,8 +27,6 @@ import { useEffect, useRef, useState } from "react";
    - 项目介绍（题跋式排版）
    ========================================================================== */
 
-
-type Gender = "男性向" | "女性向";
 
 const EXAMPLE_PHRASES: Record<Gender, string[]> = {
   男性向: [
@@ -44,33 +50,11 @@ type Opt = {
 };
 
 const OPTS: Opt[] = [
-  { label: "性向", items: ["男性向", "女性向"] },
-  {
-    label: "绘画风格",
-    modal: true,
-    items: [
-      "自动",
-      "自定义",
-      "京阿尼细腻日常",
-      "新海诚唯美光影",
-      "Galgame CG",
-      "3D 动漫电影",
-      "赛博朋克",
-      "蒸汽波",
-      "吉卜力治愈手绘",
-      "哥特庄园",
-      "废土科幻",
-      // 以下为小众/区域性画风，留作长尾选项
-      "古典厚涂油画",
-      "极简中国水墨",
-      "浮世绘木刻",
-      "莫高窟壁画",
-      "波斯细密画",
-    ],
-  },
-  { label: "剧情风格", items: ["平铺直叙", "多线转折", "悬疑烧脑", "治愈日常"], defaultIndex: 1 },
+  { label: "性向", items: [...GENDERS] },
+  { label: "绘画风格", modal: true, items: [...ART_STYLES] },
+  { label: "剧情风格", items: [...PLOT_STYLES], defaultIndex: 1 },
   { label: "语音配音", items: ["关闭", "开启"], defaultIndex: 1 },
-  { label: "内容节奏", items: ["慢热细腻", "紧凑爽快"], defaultIndex: 1 },
+  { label: "内容节奏", items: [...PACINGS], defaultIndex: 1 },
 ];
 
 type StoryContent = { title: string; outline: string; style: string; tags: string[] };
@@ -1008,9 +992,11 @@ function StyleModal({
       // 用户事后还可以手动改 draft（仍是 textarea）。
       setDraft(data.stylePrompt);
       setCustomStyleRefImage(resized);
+      track("style_image_upload", { ok: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "解析失败";
       setParseError(msg);
+      track("style_image_upload", { ok: false });
     } finally {
       setParsing(false);
     }
@@ -1472,10 +1458,10 @@ export default function HomePage() {
     // 不会再出现「点开始 → 剧情和占位文字毫无关系」的体验断层。
     const userPrompt =
       prompt.trim() || (phrases[phraseIdx] ?? "").trim();
-    const artStyle = OPTS[1]!.items[sel[1] ?? 0]!;
-    const plotStyle = OPTS[2]!.items[sel[2] ?? 1]!;
+    const artStyle = ART_STYLES[sel[1] ?? 0] ?? "自动";
+    const plotStyle = PLOT_STYLES[sel[2] ?? 1] ?? "多线转折";
     const voice = OPTS[3]!.items[sel[3] ?? 1]!;
-    const pace = OPTS[4]!.items[sel[4] ?? 1]!;
+    const pace = PACINGS[sel[4] ?? 1] ?? "紧凑爽快";
 
     // worldSetting 顺序很重要：玩家输入若存在，必须放在最前面、单独成段、
     // 用强指令包住，否则模型会把它当成夹在风格说明里的背景参考、扩写出
@@ -1524,6 +1510,17 @@ export default function HomePage() {
     const styleReferenceImage =
       artStyle === "自定义" && customStyleRefImage ? customStyleRefImage : undefined;
 
+    track("game_start", {
+      source: "prompt",
+      gender,
+      art_style: artStyle,
+      plot_style: plotStyle,
+      pacing: pace,
+      tts: audioEnabled,
+      has_prompt: prompt.trim().length > 0,
+      has_style_ref: Boolean(styleReferenceImage),
+    });
+
     sessionStorage.setItem(
       "infiplot:custom",
       JSON.stringify({ worldSetting, styleGuide, audioEnabled, styleReferenceImage }),
@@ -1533,6 +1530,9 @@ export default function HomePage() {
 
   const stories = STORIES[galleryGender];
   const imgPrefix = galleryGender === "女性向" ? "f" : "m";
+  const analyticsOn = Boolean(
+    process.env.NEXT_PUBLIC_UMAMI_SRC && process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID,
+  );
 
   // 点卡片 = 直接开始这张卡的故事，零等待：跳 /play?card=m0/f0... 由 /play
   // 页面从 /home/firstact/{name}.json 静态文件加载预烘焙好的首幕（含 scene /
@@ -1547,6 +1547,12 @@ export default function HomePage() {
       "infiplot:custom",
       JSON.stringify({ worldSetting: "", styleGuide: "", audioEnabled }),
     );
+    track("game_start", {
+      source: "curated",
+      gender: galleryGender,
+      tts: audioEnabled,
+      card: `${imgPrefix}${idx}`,
+    });
     router.push(`/play?card=${imgPrefix}${idx}`);
   };
 
@@ -1778,8 +1784,21 @@ export default function HomePage() {
           目前，内测期间生成的内容不会被保存，如有需要，请通过录屏或截图等方式保存游玩体验，并记录下生成故事时的提示词与风格选项等。
           <br />
           AI 生成的内容不代表本团队立场。
-          <br />
-          本站使用开源的 Umami 进行隐私友好的匿名访问统计：不使用 Cookie、不收集个人信息、不做跨站追踪。
+          {analyticsOn && (
+            <>
+              <br />
+              本站使用开源的{" "}
+              <a
+                href="https://umami.is/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-clay-900/20 underline-offset-2 transition-colors hover:text-clay-700"
+              >
+                Umami
+              </a>{" "}
+              进行隐私友好的匿名访问与交互统计：不使用 Cookie、不收集个人信息、不发送任何您输入的内容、不做跨站追踪。
+            </>
+          )}
         </p>
       </section>
 
@@ -1794,7 +1813,10 @@ export default function HomePage() {
         <StyleModal
           items={OPTS[styleRow]!.items}
           value={sel[styleRow] ?? 0}
-          onPick={(i) => setSel((s) => s.map((v, j) => (j === styleRow ? i : v)))}
+          onPick={(i) => {
+            track("art_style_select", { style: ART_STYLES[i] ?? "自动" });
+            setSel((s) => s.map((v, j) => (j === styleRow ? i : v)));
+          }}
           onClose={() => setStyleOpen(false)}
           customStyleGuide={customStyleGuide}
           setCustomStyleGuide={setCustomStyleGuide}
