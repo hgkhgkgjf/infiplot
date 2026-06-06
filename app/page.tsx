@@ -1025,7 +1025,7 @@ function StyleModal({
       <div
         onMouseDown={(e) => e.stopPropagation()}
         className={
-          "flex w-[1400px] max-w-[94vw] max-h-[86vh] flex-col overflow-hidden rounded-sm border border-clay-900/15 bg-cream-50 shadow-2xl shadow-clay-900/25 transition-all duration-300 " +
+          "flex w-[1400px] max-w-[94vw] h-[86vh] flex-col overflow-hidden rounded-sm border border-clay-900/15 bg-cream-50 shadow-2xl shadow-clay-900/25 transition-all duration-300 " +
           (shown ? "opacity-100 scale-100" : "opacity-0 scale-95")
         }
       >
@@ -1073,53 +1073,56 @@ function StyleModal({
         </div>
 
         {view === "custom" ? (
-          <div className="flex flex-col gap-4 overflow-y-auto px-6 py-6 md:px-8">
-            <div className="flex flex-col gap-2">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleUploadStyleImage(f);
-                  if (fileInputRef.current) fileInputRef.current.value = "";
-                }}
-              />
+          <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6 md:px-8">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleUploadStyleImage(f);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+            />
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              autoFocus
+              rows={6}
+              placeholder={"描述你想要的画面风格，例如：\n梦幻水彩风格，柔和的色调，怀旧的氛围\n\n💡 提示：部分绘图模型对英文提示词效果更佳，建议先借助 AI 对话工具生成专业的英文风格描述，再粘贴到这里"}
+              className="w-full flex-1 resize-y rounded-sm border border-clay-900/15 bg-cream-50 px-3 py-2.5 font-sans text-[13px] leading-relaxed text-clay-900 outline-none transition-colors focus:border-ember-500 placeholder:text-clay-400"
+            />
+            {parseError && (
+              <span className="font-sans text-[11px] text-rose-500">
+                <i className="fa-solid fa-circle-exclamation mr-1" />
+                {parseError}
+              </span>
+            )}
+            <div className="flex items-center gap-2">
               {customStyleRefImage ? (
-                <div className="flex items-center gap-3 rounded-sm border border-clay-900/12 bg-cream-100 px-3 py-2.5">
+                <div className="flex items-center gap-2">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={customStyleRefImage}
                     alt="画风参考图"
-                    className="h-14 w-14 shrink-0 rounded-sm border border-clay-900/10 object-cover"
+                    className="h-8 w-8 shrink-0 rounded-sm border border-clay-900/10 object-cover"
                   />
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="font-sans text-[12px] text-clay-900">
-                      <i className="fa-solid fa-check mr-1.5 text-ember-500" />
-                      参考图已上传
-                    </span>
-                    <span className="font-sans text-[11px] leading-snug text-clay-500">
-                      AI 已解析为下方风格描述；每一幕画师都会参考这张图
-                    </span>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={parsing}
-                      className="font-sans text-[11px] text-clay-500 hover:text-ember-500 transition-colors disabled:opacity-50"
-                    >
-                      换一张
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeStyleRefImage()}
-                      className="font-sans text-[11px] text-clay-400 hover:text-clay-900 transition-colors"
-                    >
-                      移除
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={parsing}
+                    className="font-sans text-[11px] text-clay-500 hover:text-ember-500 transition-colors disabled:opacity-50"
+                  >
+                    换一张
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeStyleRefImage()}
+                    className="font-sans text-[11px] text-clay-400 hover:text-clay-900 transition-colors"
+                  >
+                    移除
+                  </button>
                 </div>
               ) : (
                 <button
@@ -1127,45 +1130,43 @@ function StyleModal({
                   onClick={() => fileInputRef.current?.click()}
                   disabled={parsing}
                   className={
-                    "flex items-center justify-center gap-2 rounded-sm border border-dashed px-3 py-2.5 font-sans text-[12px] transition-colors " +
+                    "flex items-center gap-1.5 rounded-sm border px-3 py-1.5 font-sans text-[12px] transition-colors " +
                     (parsing
-                      ? "border-clay-900/15 bg-cream-100 text-clay-400 cursor-wait"
-                      : "border-clay-900/25 text-clay-700 hover:border-ember-500 hover:bg-ember-500/5 hover:text-ember-500")
+                      ? "border-clay-900/15 text-clay-400 cursor-wait"
+                      : "border-clay-900/15 text-clay-700 hover:border-ember-500 hover:text-ember-500")
                   }
                 >
                   {parsing ? (
                     <>
                       <i className="fa-solid fa-circle-notch fa-spin text-[11px]" />
-                      AI 正在解析参考图…
+                      解析中…
                     </>
                   ) : (
                     <>
-                      <i className="fa-regular fa-image text-[13px]" />
-                      上传画风参考图（可选）· AI 自动解析画面风格
+                      <i className="fa-regular fa-image text-[11px]" />
+                      上传参考图
                     </>
                   )}
                 </button>
               )}
-              {parseError && (
-                <span className="font-sans text-[11px] text-rose-500">
-                  <i className="fa-solid fa-circle-exclamation mr-1" />
-                  {parseError}
-                </span>
-              )}
-            </div>
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              autoFocus
-              rows={6}
-              placeholder={"描述你想要的画面风格，例如：\n梦幻水彩风格，柔和的色调，怀旧的氛围"}
-              className="w-full resize-y rounded-sm border border-clay-900/15 bg-cream-50 px-3 py-2.5 font-sans text-[13px] leading-relaxed text-clay-900 outline-none transition-colors focus:border-ember-500 placeholder:text-clay-400"
-            />
-            <div className="flex items-center justify-end gap-2">
+              <select
+                value=""
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v && STYLE_MAP[v]) setDraft(STYLE_MAP[v]);
+                }}
+                className="h-8 w-44 rounded-sm border border-clay-900/15 bg-cream-50 px-2 font-sans text-[12px] text-clay-700 outline-none transition-colors focus:border-ember-500"
+              >
+                <option value="">从预设风格导入…</option>
+                {Object.keys(STYLE_MAP).map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <div className="flex-1" />
               <button
                 type="button"
                 onClick={() => setView("grid")}
-                className="px-3 py-1.5 font-sans text-xs text-clay-500 hover:text-clay-900 transition-colors"
+                className="rounded-sm border border-clay-900/15 px-4 py-1.5 font-sans text-xs text-clay-700 hover:border-clay-900/30 hover:text-clay-900 transition-colors"
               >
                 取消
               </button>
@@ -1174,10 +1175,10 @@ function StyleModal({
                 disabled={!draft.trim()}
                 onClick={saveCustom}
                 className={
-                  "rounded-sm px-4 py-1.5 font-sans text-xs text-cream-50 transition-colors " +
+                  "rounded-sm px-4 py-1.5 font-sans text-xs transition-colors " +
                   (draft.trim()
-                    ? "bg-clay-900 hover:bg-ember-500"
-                    : "bg-clay-300 cursor-not-allowed")
+                    ? "bg-clay-900 text-cream-50 hover:bg-ember-500"
+                    : "bg-clay-900/20 text-clay-500 cursor-not-allowed")
                 }
               >
                 保存并选用
@@ -1189,7 +1190,6 @@ function StyleModal({
             {list.map(({ name, i }) => {
               const isCustom = name === "自定义风格";
               const isAuto = name === "自动";
-              const hasStyleMap = Boolean(STYLE_MAP[name]);
               const thumb = STYLE_THUMB[name];
               return (
                 <div
@@ -1225,18 +1225,6 @@ function StyleModal({
                       <img src={thumb} alt={name} loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
                     ) : (
                       <div className="absolute inset-0 bg-cream-100" />
-                    )}
-                    {!isAuto && !isCustom && hasStyleMap && (
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openCustomView(STYLE_MAP[name] ?? "");
-                        }}
-                        title="基于此风格自定义"
-                        className="absolute right-1.5 top-1.5 z-20 flex h-6 w-6 items-center justify-center rounded-sm text-[11px] text-cream-50/70 opacity-0 transition-all group-hover:opacity-100 hover:bg-ember-500/20 hover:text-cream-50"
-                      >
-                        <i className="fa-solid fa-wand-magic-sparkles" />
-                      </span>
                     )}
                   </div>
                   <span className={"block px-2 py-2 text-center font-serif text-sm " + (i === value ? "text-ember-500" : "text-clay-700")}>
