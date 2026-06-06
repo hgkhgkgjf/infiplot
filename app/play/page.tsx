@@ -268,17 +268,12 @@ type ScenePathStep = {
 
 function buildDialogueHistory(
   session: Session | null,
-  currentSceneId: string | undefined,
-  currentVisitedBeatIds: string[],
 ): DialogueHistoryItem[] {
   if (!session) return [];
 
   return session.history.flatMap((entry, sceneIndex) => {
     const beatsById = new Map(entry.scene.beats.map((b) => [b.id, b]));
-    const visitedBeatIds =
-      entry.scene.id === currentSceneId
-        ? currentVisitedBeatIds
-        : entry.visitedBeatIds;
+    const visitedBeatIds = entry.visitedBeatIds;
 
     return visitedBeatIds.flatMap((beatId, beatIndex) => {
       const beat = beatsById.get(beatId);
@@ -611,13 +606,8 @@ function PlayInner() {
   }, [currentScene, currentBeatId]);
 
   const dialogueHistory = useMemo<DialogueHistoryItem[]>(
-    () =>
-      buildDialogueHistory(
-        session,
-        currentScene?.id,
-        visitedBeatsRef.current,
-      ),
-    [session, currentScene?.id, currentBeatId],
+    () => buildDialogueHistory(session),
+    [session],
   );
 
   const audioSrc = (currentBeat ? beatAudioMap[currentBeat.id] : undefined) ?? null;
