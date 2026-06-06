@@ -1189,7 +1189,6 @@ function StyleModal({
           <div className="grid grid-cols-2 gap-3 overflow-y-auto px-6 py-6 md:grid-cols-4 md:gap-4 md:px-8">
             {list.map(({ name, i }) => {
               const isCustom = name === "自定义风格";
-              const isAuto = name === "自动";
               const thumb = STYLE_THUMB[name];
               return (
                 <div
@@ -1213,7 +1212,7 @@ function StyleModal({
                     }
                   }}
                   className={
-                    "group cursor-pointer rounded-sm border transition-all outline-none " +
+                    "group cursor-pointer rounded-sm border transition-all outline-none focus-visible:ring-2 focus-visible:ring-ember-500 " +
                     (i === value
                       ? "border-ember-500 ring-2 ring-ember-500"
                       : "border-clay-900/12 hover:border-ember-500/50 hover:ring-2 hover:ring-ember-500/25")
@@ -1359,14 +1358,11 @@ export default function HomePage() {
           ]
     ).join("\n");
 
-    // 「自动」→ fall back to Galgame CG (project default). Plain prompts like
+    // 「自动」→ fall back to 吉卜力 (project default). Plain prompts like
     // "由模型自动判断画风" are not understood by FLUX — it just paints them
     // literally, so we'd rather lock in a sensible default.
-    // 「自定义」→ 用用户在弹窗里填的原始 styleGuide，原样喂给 LLM；空内容时
+    // 「自定义风格」→ 用用户在弹窗里填的原始 styleGuide，原样喂给 LLM；空内容时
     // 退化到默认（避免传入空字符串导致 /api/start 报缺字段）。
-    // TODO(自动路由): 后续实现真正的「自动」——由模型依据世界观 / 玩家 prompt
-    // 选出最合适的画风，再映射到对应风格提示词，而非固定回退到 Galgame。届时
-    // 同步更新风格弹窗副标题（「由模型根据 prompt 判断风格」）使文案与行为一致。
     const DEFAULT_STYLE = "吉卜力";
     let styleGuide: string;
     if (artStyle === "自定义风格" && customStyleGuide.trim()) {
