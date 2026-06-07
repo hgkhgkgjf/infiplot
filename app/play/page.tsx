@@ -1171,7 +1171,10 @@ function PlayInner() {
             if (sessionOrientation === "portrait") {
               console.warn(`[play] portrait firstact missing for ${cardName} (HTTP ${r.status}), falling back to landscape`);
               const fb = await fetch(`/home/firstact/${encodeURIComponent(cardName)}.json`);
-              if (fb.ok) return (await fb.json()) as PrebakedFirstAct;
+              if (fb.ok) {
+                const fallback = (await fb.json()) as PrebakedFirstAct;
+                return { ...fallback, scene: { ...fallback.scene, orientation: "landscape" as const } };
+              }
             }
             throw new Error(`找不到精选剧情：${cardName}`);
           },
@@ -1500,10 +1503,12 @@ function PlayInner() {
           ...currentScene,
           beats: [...currentScene.beats, newBeat],
         };
+        const nextVisited = [...visitedBeatsRef.current, newBeatId];
+        visitedBeatsRef.current = nextVisited;
         const nextSession: Session = {
           ...session,
           history: session.history.map((h, i, arr) =>
-            i === arr.length - 1 ? { ...h, scene: patched } : h,
+            i === arr.length - 1 ? { ...h, scene: patched, visitedBeatIds: nextVisited } : h,
           ),
           characters: mergeCharactersPreserveVoice(
             session.characters,

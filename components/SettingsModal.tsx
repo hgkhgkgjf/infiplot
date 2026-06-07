@@ -100,10 +100,9 @@ export function SettingsModal({
       const presetId = keyType === "payg" ? PAYG_PRESET_ID : regionId;
       writeStoredTtsConfig({ presetId, apiKey: key });
       ttsConfigured = true;
-    } else if (!ttsAlreadyConfigured) {
-      ttsConfigured = false;
     } else {
-      ttsConfigured = true;
+      clearStoredTtsConfig();
+      ttsConfigured = false;
     }
 
     onSaved({ ttsConfigured, playerName: name, visionClickEnabled: visionClick });

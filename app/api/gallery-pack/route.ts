@@ -27,7 +27,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: "Bad JSON" }, { status: 400 });
   }
 
-  if (docStr.length > MAX_DOC_BYTES) {
+  if (new TextEncoder().encode(docStr).byteLength > MAX_DOC_BYTES) {
     return Response.json(
       { error: "图集数据太大,无法打包分享" },
       { status: 413 },

@@ -11,7 +11,9 @@ jobs:
     if: >
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
-       startsWith(github.event.comment.body, '/'))
+       github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -36,7 +38,9 @@ jobs:
     if: >
       github.event_name == 'pull_request' ||
       (github.event_name == 'issue_comment' &&
-       startsWith(github.event.comment.body, '/'))
+       github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
     runs-on: ubuntu-latest
     permissions:
       issues: write

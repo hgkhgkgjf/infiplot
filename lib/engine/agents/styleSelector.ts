@@ -28,7 +28,9 @@ export async function selectStyle(
   if (STYLE_MAP[picked]) {
     return STYLE_MAP[picked];
   }
-  const fuzzy = STYLE_NAMES.find((s) => picked.includes(s) || s.includes(picked));
+  const fuzzy = picked
+    ? STYLE_NAMES.find((s) => picked.includes(s) || s.includes(picked))
+    : undefined;
   if (fuzzy) {
     return STYLE_MAP[fuzzy]!;
   }
