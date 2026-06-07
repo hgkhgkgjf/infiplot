@@ -856,6 +856,8 @@ function PlayInner() {
   const handleSettingsSaved = useCallback(
     (settings: { ttsConfigured: boolean; playerName: string; visionClickEnabled: boolean }) => {
       setVisionClickEnabled(settings.visionClickEnabled);
+      const nextPlayerName = settings.playerName || undefined;
+      setSession((prev) => prev ? { ...prev, playerName: nextPlayerName } : prev);
       const cfg = settings.ttsConfigured ? loadClientTtsConfig() : null;
       byoTtsRef.current = cfg;
       setByoTtsConfig(cfg);
