@@ -1,0 +1,28 @@
+[config]
+ai_timeout = 300
+temperature = 0.2
+
+[pr_reviewer]
+num_code_suggestions = 4
+inline_code_comments = true
+require_security_review = true
+extra_instructions = """
+This is a Next.js 16 / React 19 / TypeScript interactive visual novel engine.
+Focus on: logic errors, security vulnerabilities, missing error handling,
+type safety issues, and architectural violations.
+Do not comment on code style or formatting.
+"""
+
+[pr_description]
+generate_ai_title = true
+publish_labels = true
+use_bullet_points = true
+
+[ignore]
+glob = [
+    "pnpm-lock.yaml",
+    "*.generated.*",
+    "public/**",
+    "docs/**",
+    "*.md"
+]

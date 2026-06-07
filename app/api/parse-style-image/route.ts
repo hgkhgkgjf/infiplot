@@ -55,7 +55,6 @@ export async function POST(req: Request) {
       config.vision,
       body.imageDataUrl,
       STYLE_EXTRACTION_PROMPT,
-      { responseFormat: "json_object" },
     );
 
     let parsed: { stylePrompt?: string };

@@ -423,7 +423,7 @@ export async function runWriterPlan(
       { role: "system", content: WRITER_PLAN_SYSTEM },
       { role: "user", content: buildWriterPlanUserMessage(session) },
     ],
-    { temperature: 0.9, responseFormat: "json_object", tag: "writer-plan" },
+    { temperature: 0.9, tag: "writer-plan" },
   );
 
   const parsed = parseJsonLoose<RawPlan>(raw);
@@ -473,7 +473,7 @@ export async function runWriterBeats(
       { role: "system", content: WRITER_BEATS_SYSTEM },
       { role: "user", content: buildWriterBeatsUserMessage(session, plan) },
     ],
-    { temperature: 0.9, responseFormat: "json_object", tag: "writer-beats" },
+    { temperature: 0.9, tag: "writer-beats" },
   );
 
   const parsed = parseJsonLoose<RawBeats>(raw);

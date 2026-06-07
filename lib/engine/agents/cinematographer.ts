@@ -67,7 +67,7 @@ export async function runCinematographer(
         ),
       },
     ],
-    { temperature: 0.6, responseFormat: "json_object", tag: "cinematographer" },
+    { temperature: 0.6, tag: "cinematographer" },
   );
 
   const parsed = parseJsonLoose<RawCinematographerOutput>(raw);

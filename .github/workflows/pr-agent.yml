@@ -1,0 +1,62 @@
+name: PR Agent
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+
+jobs:
+  review-claude:
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    steps:
+      - name: PR Agent - Claude Opus 4.7
+        uses: the-pr-agent/pr-agent@main
+        env:
+          OPENAI.KEY: ${{ secrets.PR_REVIEW_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          config.model: "openai/claude-opus-4-7"
+          config.fallback_models: '["openai/claude-opus-4-6"]'
+          config.custom_model_max_tokens: 200000
+          openai.api_base: ${{ secrets.PR_REVIEW_BASE_URL }}
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "true"
+          github_action_config.auto_improve: "true"
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'
+
+  review-gpt:
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       startsWith(github.event.comment.body, '/') &&
+       contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association))
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      contents: read
+    steps:
+      - name: PR Agent - GPT 5.5
+        uses: the-pr-agent/pr-agent@main
+        env:
+          OPENAI.KEY: ${{ secrets.PR_REVIEW_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          config.model: "openai/gpt-5.5"
+          config.fallback_models: '["openai/gpt-5.4-mini"]'
+          config.custom_model_max_tokens: 200000
+          openai.api_base: ${{ secrets.PR_REVIEW_BASE_URL }}
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "false"
+          github_action_config.auto_improve: "true"
+          github_action_config.pr_actions: '["opened", "reopened", "ready_for_review", "synchronize"]'

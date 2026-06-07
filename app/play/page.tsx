@@ -11,8 +11,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { PlayCanvas, type Phase } from "@/components/PlayCanvas";
-import { TtsKeyModal } from "@/components/TtsKeyModal";
+import {
+  PlayCanvas,
+  type Phase,
+} from "@/components/PlayCanvas";
+import type { DialogueHistoryItem } from "@/components/DialogueHistoryModal";
+import type { GalleryDoc, GalleryScene } from "@/app/gallery/page";
+import { SettingsModal, readStoredPlayerName, readStoredVisionClick } from "@/components/SettingsModal";
 import { annotateClick } from "@/lib/annotateClient";
 import { loadClientTtsConfig } from "@/lib/clientTtsConfig";
 import { PRESETS } from "@/lib/presets";
@@ -22,6 +27,7 @@ import type {
   BeatChoice,
   Character,
   CharacterVoice,
+  FreeformClassifyResponse,
   InsertBeatResponse,
   Orientation,
   Scene,
@@ -262,6 +268,58 @@ type ScenePathStep = {
   exit: { choiceId: string; label: string; nextSceneSeed: string };
 };
 
+function buildDialogueHistory(
+  session: Session | null,
+): DialogueHistoryItem[] {
+  if (!session) return [];
+
+  return session.history.flatMap((entry, sceneIndex) => {
+    const beatsById = new Map(entry.scene.beats.map((b) => [b.id, b]));
+    const visitedBeatIds = entry.visitedBeatIds;
+
+    return visitedBeatIds.flatMap((beatId, beatIndex) => {
+      const beat = beatsById.get(beatId);
+      if (!beat) return [];
+
+      const nextVisitedBeatId = visitedBeatIds[beatIndex + 1];
+      const choice =
+        beat.next.type === "choice"
+          ? beat.next.choices.find((c) => {
+              if (c.effect.kind === "advance-beat") {
+                return c.effect.targetBeatId === nextVisitedBeatId;
+              }
+              return (
+                beatIndex === visitedBeatIds.length - 1 &&
+                entry.exit?.kind === "choice" &&
+                c.id === entry.exit.choiceId
+              );
+            })
+          : undefined;
+      const freeformAction =
+        beatIndex === visitedBeatIds.length - 1 &&
+        entry.exit?.kind === "freeform"
+          ? entry.exit.action
+          : undefined;
+
+      const body = beat.speaker ? beat.line : beat.narration;
+      const narration = beat.speaker ? beat.narration : undefined;
+      if (!body && !narration && !choice && !freeformAction) return [];
+
+      return [
+        {
+          id: `${sceneIndex}:${beatId}:${beatIndex}`,
+          sceneIndex: sceneIndex + 1,
+          speaker: beat.speaker,
+          body,
+          narration,
+          selectedChoice: choice?.label,
+          freeformAction,
+        },
+      ];
+    });
+  });
+}
+
 function pathKey(steps: ScenePathStep[]): string {
   return steps.map((s) => s.exit.choiceId).join("/");
 }
@@ -311,6 +369,14 @@ function findSoleChangeSceneChoice(scene: Scene): BeatChoice | null {
 
 function prefetchScenePath(
   pool: Map<string, PrefetchEntry>,
+  // Resolved-prefetch sink for the gallery export. Every successful resolve
+  // is recorded here keyed by `${parentSceneId}:${choiceId}` so the gallery
+  // can let the player click any choice whose alternate the AI already paid
+  // to generate — even ones that were later abandoned mid-play because the
+  // player took a different branch. Survives `consumeChoice`'s abort sweep:
+  // a prefetch that's already resolved when its parent choice is abandoned
+  // still leaves the result here.
+  resolvedSink: Map<string, Scene>,
   baseSession: Session,
   steps: ScenePathStep[],
   depth: number,
@@ -336,6 +402,16 @@ function prefetchScenePath(
       throw new Error(j.error ?? res.statusText);
     }
     const data = (await res.json()) as SceneResponse;
+
+    // Record this resolved alternate for the gallery export. Key is
+    // (parent scene id at the choice point) : (choice id). Includes the
+    // CDN imageUrl on the Scene so the gallery has everything it needs to
+    // render without any further info from the engine.
+    const lastStep = steps[steps.length - 1]!;
+    resolvedSink.set(`${lastStep.fromScene.id}:${lastStep.exit.choiceId}`, {
+      ...data.scene,
+      imageUrl: data.imageUrl,
+    });
 
     // Kick off the blob fetch for this URL so when the player eventually
     // picks this choice, transitioning is a no-op cache lookup instead of a
@@ -375,6 +451,7 @@ function prefetchScenePath(
         };
         prefetchScenePath(
           pool,
+          resolvedSink,
           carriedBase,
           [...steps, nextStep],
           depth + 1,
@@ -502,12 +579,17 @@ function PlayInner() {
   const [silenceStrikes, setSilenceStrikes] = useState(0);
   // Once the player dismisses the silence nudge, keep it gone for this session.
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
-  // The in-place BYO-key modal, opened from the silence nudge so the player can
-  // add a key without leaving the play page.
-  const [ttsModalOpen, setTtsModalOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [visionClickEnabled, setVisionClickEnabled] = useState(true);
 
   const startedRef = useRef(false);
   const poolRef = useRef<Map<string, PrefetchEntry>>(new Map());
+  // Accumulator for resolved prefetches across the whole session — every
+  // `prefetchScenePath` resolution writes here, keyed by parent-scene + choice.
+  // Survives `consumeChoice`'s pool sweep (an already-resolved promise is not
+  // un-resolved by aborting its controller), so abandoned alternates remain
+  // available for the gallery export. Cleared only on unmount.
+  const resolvedPrefetchesRef = useRef<Map<string, Scene>>(new Map());
   // Lazy per-beat audio fetches keyed by beat.id. Aborted when the scene
   // changes so stale in-flight requests can't poison the new scene's map
   // (beat ids like "b1" are scene-local and would collide across scenes).
@@ -549,6 +631,11 @@ function PlayInner() {
     return currentScene.beats.find((b) => b.id === currentBeatId) ?? null;
   }, [currentScene, currentBeatId]);
 
+  const dialogueHistory = useMemo<DialogueHistoryItem[]>(
+    () => buildDialogueHistory(session),
+    [session],
+  );
+
   const audioSrc = (currentBeat ? beatAudioMap[currentBeat.id] : undefined) ?? null;
 
   useEffect(() => {
@@ -563,6 +650,9 @@ function PlayInner() {
   useEffect(() => {
     mutedRef.current = muted;
   }, [muted]);
+  useEffect(() => {
+    setVisionClickEnabled(readStoredVisionClick());
+  }, []);
 
   // Coarse liveness ping for active-time analytics. /play is a single SPA
   // route, so page views alone read as ~0 duration; a 30s heartbeat (only
@@ -763,15 +853,12 @@ function PlayInner() {
     prefetchSceneAudio();
   }, [muted, prefetchSceneAudio]);
 
-  // ── BYO key enabled/disabled from the play page (silence nudge → modal) ─
-  // On enable: point the synth path at the user's key and immediately
-  // re-synthesize the current scene in-browser, so the voices the player just
-  // missed come back without a reload (their characters already carry
-  // server-provisioned `voice`, which resolveByoVoice reuses with the new key).
-  // On disable: just stop using it; later scenes fall back to the server.
-  const handleByoSaved = useCallback(
-    (configured: boolean) => {
-      const cfg = configured ? loadClientTtsConfig() : null;
+  const handleSettingsSaved = useCallback(
+    (settings: { ttsConfigured: boolean; playerName: string; visionClickEnabled: boolean }) => {
+      setVisionClickEnabled(settings.visionClickEnabled);
+      const nextPlayerName = settings.playerName || undefined;
+      setSession((prev) => prev ? { ...prev, playerName: nextPlayerName } : prev);
+      const cfg = settings.ttsConfigured ? loadClientTtsConfig() : null;
       byoTtsRef.current = cfg;
       setByoTtsConfig(cfg);
       if (cfg) {
@@ -788,6 +875,164 @@ function PlayInner() {
     },
     [prefetchSceneAudio],
   );
+
+  // ── Export to interactive gallery (PPT-style replay) ─────────────────
+  // Drop all but the (keepCount) most-recent gallery exports from localStorage,
+  // ordered by their stored createdAt. Called right before writing a new
+  // export so the cap is enforced strictly (≤ keepCount + 1 transiently → ≤ N
+  // once write completes). Corrupt entries (un-parseable / no createdAt) sort
+  // last and get evicted first.
+  const trimGalleryExports = useCallback((keepCount: number) => {
+    try {
+      const prefix = "infiplot:gallery:";
+      const entries: { key: string; createdAt: number }[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (!k || !k.startsWith(prefix)) continue;
+        let createdAt = 0;
+        try {
+          const raw = window.localStorage.getItem(k);
+          if (raw) {
+            const parsed = JSON.parse(raw) as { createdAt?: number };
+            createdAt = parsed.createdAt ?? 0;
+          }
+        } catch {
+          createdAt = 0;
+        }
+        entries.push({ key: k, createdAt });
+      }
+      entries.sort((a, b) => b.createdAt - a.createdAt);
+      for (const e of entries.slice(keepCount)) {
+        window.localStorage.removeItem(e.key);
+      }
+    } catch {
+      // best-effort — quota or disabled storage shouldn't block the export
+    }
+  }, []);
+
+  // Strips the live Session to a small GalleryDoc — only scene images +
+  // dialogue text + recorded choices, no voice base64 / portraits / style
+  // reference (those are tens-to-hundreds of KB each). Writes it to
+  // localStorage under a one-shot id and opens /gallery#<id> in a new tab
+  // so the play session keeps running.
+  const handleExportGallery = useCallback(() => {
+    const s = sessionRef.current;
+    if (!s) return;
+    const scenes: GalleryScene[] = s.history
+      .map((h) => ({
+        id: h.scene.id,
+        imageUrl: h.scene.imageUrl ?? "",
+        sceneKey: h.scene.sceneKey,
+        orientation: h.scene.orientation,
+        beats: h.scene.beats,
+        entryBeatId: h.scene.entryBeatId,
+        visitedBeatIds: h.visitedBeatIds,
+        exit: h.exit,
+      }))
+      .filter((sc) => sc.imageUrl);
+    if (scenes.length === 0) return;
+
+    // Alternates: ${parentSceneId}:${choiceId} → reachable scene. Two sources,
+    // merged with main-path winning ties (it always agrees with prefetch when
+    // prefetch was actually used, so the override is a no-op in the common case;
+    // it differs only when the player took a cold path and the prefetch had
+    // resolved to something the engine later regenerated):
+    //   1. Every resolved prefetch (including alternates the player never took)
+    //   2. Main path: every history step's choice exit → the next visited scene
+    const alternates: Record<string, GalleryScene> = {};
+    for (const [key, scene] of resolvedPrefetchesRef.current) {
+      if (!scene.imageUrl) continue;
+      alternates[key] = {
+        id: scene.id,
+        imageUrl: scene.imageUrl,
+        sceneKey: scene.sceneKey,
+        orientation: scene.orientation,
+        beats: scene.beats,
+        entryBeatId: scene.entryBeatId,
+      };
+    }
+    for (let i = 0; i < s.history.length - 1; i++) {
+      const h = s.history[i]!;
+      const nextH = s.history[i + 1]!;
+      if (
+        h.exit?.kind === "choice" &&
+        h.scene.id &&
+        nextH.scene.imageUrl
+      ) {
+        alternates[`${h.scene.id}:${h.exit.choiceId}`] = {
+          id: nextH.scene.id,
+          imageUrl: nextH.scene.imageUrl,
+          sceneKey: nextH.scene.sceneKey,
+          orientation: nextH.scene.orientation,
+          beats: nextH.scene.beats,
+          entryBeatId: nextH.scene.entryBeatId,
+        };
+      }
+    }
+
+    // Character portraits — names + CDN URLs only. The big voice base64s are
+    // intentionally dropped (the gallery only needs the portraits for download).
+    const characters = s.characters
+      .filter((c) => c.basePortraitUrl)
+      .map((c) => ({
+        name: c.name,
+        basePortraitUrl: c.basePortraitUrl as string,
+      }));
+
+    const id = `${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    const doc: GalleryDoc = {
+      v: 2,
+      id,
+      createdAt: Date.now(),
+      orientation: s.orientation ?? "landscape",
+      scenes,
+      alternates,
+      characters,
+    };
+    // Cap retained gallery exports at the most recent 2. Drop everything
+    // older BEFORE writing the new doc so we never transiently exceed the cap
+    // (and so a near-quota localStorage has headroom for the new entry).
+    trimGalleryExports(1);
+    const docStr = JSON.stringify(doc);
+    try {
+      window.localStorage.setItem(`infiplot:gallery:${id}`, docStr);
+    } catch {
+      // localStorage full or disabled — silently bail; the player keeps playing.
+      return;
+    }
+    track("gallery_export", { scene_count: scenes.length });
+    window.open(`/gallery#id=${id}`, "_blank", "noopener");
+
+    // Fire-and-forget: also pack an encrypted `.infiplot` share file for the
+    // player to send to a friend. The local-tab view above is instant either
+    // way; this happens in the background. Server returns 503 if
+    // GALLERY_SECRET isn't configured, in which case we silently skip — the
+    // local view still works, just no share file.
+    void (async () => {
+      try {
+        const r = await fetch("/api/gallery-pack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ docStr }),
+        });
+        if (!r.ok) return;
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `infiplot-${id}.infiplot`;
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      } catch {
+        // network / decrypt error — local view above already worked
+      }
+    })();
+  }, [trimGalleryExports]);
 
   // ── Presentation mode toggle ─────────────────────────────────────────
   const togglePresentation = useCallback(async () => {
@@ -836,11 +1081,10 @@ function PlayInner() {
   // Lock the visible orientation BEFORE the first paint, so portrait phones
   // never flash the landscape loading chrome. The state inits to "landscape"
   // for SSR-safety; this corrects it pre-paint (no-op re-render on landscape
-  // devices). Prebaked cards (decision C) stay landscape-baked regardless of
-  // device. The bootstrap effect below re-derives the same value for the
+  // devices). The bootstrap effect below re-derives the same value for the
   // /api/start payload.
   useIsomorphicLayoutEffect(() => {
-    setOrientation(params.get("card") ? "landscape" : detectOrientation());
+    setOrientation(detectOrientation());
   }, [params]);
 
   // ── Bootstrap: start session ─────────────────────────────────────────
@@ -863,11 +1107,12 @@ function PlayInner() {
       styleGuide: string;
       styleReferenceImage?: string;
       orientation?: Orientation;
+      playerName?: string;
     } | null = null;
     if (!cardName) {
       if (presetId) {
         const p = PRESETS.find((x) => x.id === presetId);
-        if (p) livePayload = { worldSetting: p.worldSetting, styleGuide: p.styleGuide };
+        if (p) livePayload = { worldSetting: p.worldSetting, styleGuide: p.styleGuide, playerName: readStoredPlayerName() || undefined };
       } else if (isCustom) {
         const stored = sessionStorage.getItem("infiplot:custom");
         if (stored) {
@@ -877,11 +1122,13 @@ function PlayInner() {
               styleGuide: string;
               audioEnabled?: boolean;
               styleReferenceImage?: string;
+              playerName?: string;
             };
             livePayload = {
               worldSetting: parsed.worldSetting,
               styleGuide: parsed.styleGuide,
               styleReferenceImage: parsed.styleReferenceImage || undefined,
+              playerName: parsed.playerName || undefined,
             };
             // audioEnabled 已在 useState 初始化时反向投射到 muted；这里无需再额外存。
           } catch {
@@ -891,14 +1138,10 @@ function PlayInner() {
       }
     }
 
-    // Lock orientation for the whole session. Prebaked cards (decision C) are
-    // landscape-baked, so they stay landscape regardless of device; only the
-    // live /api/start path requests a portrait paint when the phone is upright.
-    // The visible state is already set pre-paint by the layout effect above;
-    // here we only need the value for the /api/start payload.
-    const sessionOrientation: Orientation = cardName
-      ? "landscape"
-      : detectOrientation();
+    // Lock orientation for the whole session. Both prebaked-card and live paths
+    // now respect device orientation — portrait prebaked assets live under
+    // firstact-portrait/ and firstscene-portrait/.
+    const sessionOrientation: Orientation = detectOrientation();
     if (livePayload) livePayload.orientation = sessionOrientation;
 
     if (!cardName && !livePayload) {
@@ -919,11 +1162,23 @@ function PlayInner() {
       cardGender?: string;
     };
 
+    const firstactDir = sessionOrientation === "portrait"
+      ? "firstact-portrait"
+      : "firstact";
+
     const fetchStart: Promise<PrebakedFirstAct> = cardName
-      ? fetch(`/home/firstact/${encodeURIComponent(cardName)}.json`).then(
+      ? fetch(`/home/${firstactDir}/${encodeURIComponent(cardName)}.json`).then(
           async (r) => {
-            if (!r.ok) throw new Error(`找不到精选剧情：${cardName}`);
-            return (await r.json()) as PrebakedFirstAct;
+            if (r.ok) return (await r.json()) as PrebakedFirstAct;
+            if (sessionOrientation === "portrait") {
+              console.warn(`[play] portrait firstact missing for ${cardName} (HTTP ${r.status}), falling back to landscape`);
+              const fb = await fetch(`/home/firstact/${encodeURIComponent(cardName)}.json`);
+              if (fb.ok) {
+                const fallback = (await fb.json()) as PrebakedFirstAct;
+                return { ...fallback, scene: { ...fallback.scene, orientation: "landscape" as const } };
+              }
+            }
+            throw new Error(`找不到精选剧情：${cardName}`);
           },
         )
       : fetch("/api/start", {
@@ -975,6 +1230,7 @@ function PlayInner() {
           storyState: data.storyState,
           styleReferenceImage: data.styleReferenceImage,
           orientation: data.scene.orientation ?? sessionOrientation,
+          playerName: livePayload?.playerName || readStoredPlayerName() || undefined,
         };
         visitedBeatsRef.current = [data.scene.entryBeatId];
         setSession(initial);
@@ -1008,7 +1264,14 @@ function PlayInner() {
           nextSceneSeed: choice.effect.nextSceneSeed,
         },
       };
-      prefetchScenePath(poolRef.current, s, [step], 0, !!byoTtsRef.current);
+      prefetchScenePath(
+        poolRef.current,
+        resolvedPrefetchesRef.current,
+        s,
+        [step],
+        0,
+        !!byoTtsRef.current,
+      );
     }
   }, [currentScene?.id, session?.id]);
 
@@ -1178,6 +1441,137 @@ function PlayInner() {
     })();
 
     void performSceneTransition(promise, exit, visited, choice.label);
+  }
+
+  async function onFreeformInput(text: string) {
+    if (phase !== "ready" || !session || !currentScene) return;
+
+    track("freeform_input", {
+      scene_index: session.history.length,
+      text_length: text.length,
+    });
+
+    setPhase("vision-thinking");
+
+    try {
+      const classifyRes = await fetch("/api/classify-freeform", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session: stripVoicesForTransport(session),
+          freeformText: text,
+        }),
+      });
+      if (!classifyRes.ok) {
+        const j = (await classifyRes.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? classifyRes.statusText);
+      }
+      const decision = (await classifyRes.json()) as FreeformClassifyResponse;
+
+      if (decision.classify === "insert-beat") {
+        // Interactive beat: NPC responds to the player's action, scene stays
+        setPhase("inserting-beat");
+        const insertRes = await fetch("/api/insert-beat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session: stripVoicesForTransport(session),
+            freeformAction: decision.freeformAction,
+            clientTts: !!byoTtsRef.current,
+          }),
+        });
+        if (!insertRes.ok) {
+          const j = (await insertRes.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? insertRes.statusText);
+        }
+        const { partial, characters: insertChars } =
+          (await insertRes.json()) as InsertBeatResponse;
+
+        const fromBeatId =
+          currentBeatRef.current?.id ?? currentScene.entryBeatId;
+        const newBeatId = `b_ins_${Date.now()}_${Math.random()
+          .toString(36)
+          .slice(2, 6)}`;
+        const newBeat: Beat = {
+          id: newBeatId,
+          narration: partial.narration,
+          speaker: partial.speaker,
+          line: partial.line,
+          lineDelivery: partial.lineDelivery,
+          next: { type: "continue", nextBeatId: fromBeatId },
+        };
+
+        const patched: Scene = {
+          ...currentScene,
+          beats: [...currentScene.beats, newBeat],
+        };
+        const nextVisited = [...visitedBeatsRef.current, newBeatId];
+        visitedBeatsRef.current = nextVisited;
+        const nextSession: Session = {
+          ...session,
+          history: session.history.map((h, i, arr) =>
+            i === arr.length - 1 ? { ...h, scene: patched, visitedBeatIds: nextVisited } : h,
+          ),
+          characters: mergeCharactersPreserveVoice(
+            session.characters,
+            insertChars,
+          ),
+        };
+        setSession(nextSession);
+        setCurrentScene(patched);
+        setCurrentBeatId(newBeatId);
+        if (newBeat.speaker && newBeat.line) {
+          void fetchBeatAudio(nextSession, {
+            id: newBeatId,
+            speaker: newBeat.speaker,
+            line: newBeat.line,
+            lineDelivery: newBeat.lineDelivery,
+          });
+        }
+        setLastExitLabel(decision.freeformAction);
+        setPhase("ready");
+        return;
+      }
+
+      // change-scene path
+      const visited = [...visitedBeatsRef.current];
+      const exit: SceneExit = {
+        kind: "freeform",
+        action: decision.freeformAction,
+      };
+      clearPool(poolRef.current);
+
+      const specSession: Session = {
+        ...session,
+        history: session.history.map((h, i, arr) =>
+          i === arr.length - 1
+            ? { ...h, visitedBeatIds: visited, exit }
+            : h,
+        ),
+      };
+
+      const promise = (async () => {
+        const res = await fetch("/api/scene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session: stripVoicesForTransport(specSession),
+            clientTts: !!byoTtsRef.current,
+          }),
+        });
+        if (!res.ok) {
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? res.statusText);
+        }
+        return (await res.json()) as SceneResponse;
+      })();
+
+      setPendingClick(null);
+      void performSceneTransition(promise, exit, visited, decision.freeformAction);
+    } catch (e) {
+      setError(String(e));
+      setPhase("ready");
+    }
   }
 
   async function onBackgroundClick(click: { x: number; y: number }) {
@@ -1367,8 +1761,13 @@ function PlayInner() {
           onBackgroundClick={onBackgroundClick}
           onAdvance={onAdvance}
           onSelectChoice={onSelectChoice}
+          onFreeformInput={onFreeformInput}
           orientation={orientation}
+          playerName={session?.playerName}
+          visionClickEnabled={visionClickEnabled}
+          onOpenSettings={() => setSettingsOpen(true)}
           fullViewport
+          dialogueHistory={dialogueHistory}
         />
         {orientation === "portrait" && (
           <div
@@ -1393,6 +1792,14 @@ function PlayInner() {
               />
             </button>
           </div>
+        )}
+        {settingsOpen && (
+          <SettingsModal
+            initialVisionClickEnabled={visionClickEnabled}
+            onClose={() => setSettingsOpen(false)}
+            onSaved={handleSettingsSaved}
+            footerNote="保存后配音 Key 会立即生效，用你自己的额度合成当前这一幕的配音。"
+          />
         )}
       </div>
     );
@@ -1441,7 +1848,12 @@ function PlayInner() {
           onBackgroundClick={onBackgroundClick}
           onAdvance={onAdvance}
           onSelectChoice={onSelectChoice}
+          onFreeformInput={onFreeformInput}
           orientation={orientation}
+          playerName={session?.playerName}
+          visionClickEnabled={visionClickEnabled}
+          onOpenSettings={() => setSettingsOpen(true)}
+          dialogueHistory={dialogueHistory}
           aboveCanvas={
             <button
               type="button"
@@ -1453,6 +1865,20 @@ function PlayInner() {
               <i className="fa-solid fa-expand text-[10px]" />
               F · 键 · 全 · 屏
             </button>
+          }
+          belowCanvas={
+            session && session.history.length > 0 ? (
+              <button
+                type="button"
+                onClick={handleExportGallery}
+                className="text-[10px] smallcaps text-clay-500 hover:text-ember-500 transition-colors flex items-center gap-2"
+                aria-label="导出可交互图集"
+                title="导出本局为可交互图集链接（只会保留最近两次的可交互图集链接）"
+              >
+                <i className="fa-solid fa-link text-[10px]" />
+                导 · 出 · 图 · 集
+              </button>
+            ) : null
           }
           aboveCanvasLeft={
             <>
@@ -1476,7 +1902,7 @@ function PlayInner() {
                 <span className="flex items-center gap-1 animate-fade-in">
                   <button
                     type="button"
-                    onClick={() => setTtsModalOpen(true)}
+                    onClick={() => setSettingsOpen(true)}
                     className="inline-flex items-center gap-1.5 rounded-full border border-ember-500/40 bg-ember-500/10 px-2.5 py-1 text-[10px] text-ember-500 hover:bg-ember-500/20 transition-colors"
                     title="经常没声音？填入你自己的小米 MiMo Key（免费），配音更稳定"
                   >
@@ -1514,11 +1940,12 @@ function PlayInner() {
 
       </main>
 
-      {ttsModalOpen && (
-        <TtsKeyModal
-          onClose={() => setTtsModalOpen(false)}
-          onSaved={handleByoSaved}
-          footerNote="保存后会立即用这把 Key 在你的浏览器里合成当前这一幕的配音；本设备后续游玩也会自动使用此 Key。"
+      {settingsOpen && (
+        <SettingsModal
+          initialVisionClickEnabled={visionClickEnabled}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={handleSettingsSaved}
+          footerNote="保存后配音 Key 会立即生效，用你自己的额度合成当前这一幕的配音。"
         />
       )}
     </div>

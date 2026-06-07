@@ -2,6 +2,9 @@ import type {
   BeatAudioRequest,
   BeatAudioResponse,
   EngineConfig,
+  FreeformClassify,
+  FreeformClassifyRequest,
+  FreeformClassifyResponse,
   InsertBeatRequest,
   InsertBeatResponse,
   Session,
@@ -13,8 +16,16 @@ import type {
   VisionResponse,
 } from "@infiplot/types";
 import { coerceOrientation } from "@infiplot/types";
+import { chat } from "@infiplot/ai-client";
 import { runArchitect } from "./agents/architect";
+import { selectStyle } from "./agents/styleSelector";
 import { directInsertBeat, directScene } from "./director";
+import { STYLE_MAP } from "@/lib/options";
+import { parseJsonLoose } from "./jsonParser";
+import {
+  FREEFORM_CLASSIFY_SYSTEM,
+  buildFreeformClassifyUserMessage,
+} from "./prompts";
 import { synthesizeBeat } from "./voice";
 import { interpret } from "./vision";
 
@@ -50,18 +61,34 @@ export async function startSession(
     characters: [],
     styleReferenceImage: req.styleReferenceImage?.trim() || undefined,
     orientation: coerceOrientation(req.orientation),
+    playerName: req.playerName?.trim() || undefined,
   };
 
-  // Stage 0 — Architect: expand the terse world/style prompt into a story
-  // bible BEFORE the first scene. Serial by necessity (the opening Writer
-  // reads session.storyState), but it gives the whole story a spine from beat
-  // one — the latency is offset by the director's portrait/voice overlap win.
+  // Stage 0 — Architect (+ optional auto style selection, in parallel).
+  // Both only depend on worldSetting, so they run concurrently.
   console.log(
     `[start] worldSetting (${session.worldSetting.length} chars):\n${session.worldSetting}`,
   );
+  const isAutoStyle = session.styleGuide === "auto";
+  if (isAutoStyle) {
+    session.styleGuide = "由 AI 根据剧情自动匹配最佳画风";
+  }
   const tArchitect = Date.now();
-  session.storyState = await runArchitect(config.text, session);
-  tlog("[start] Architect", tArchitect);
+  const [architectResult, autoStyleGuide] = await Promise.all([
+    runArchitect(config.text, session),
+    isAutoStyle
+      ? selectStyle(config.text, session.worldSetting).catch((err) => {
+          console.warn(`[styleSelector] failed, falling back to 吉卜力:`, err);
+          return null;
+        })
+      : Promise.resolve(null),
+  ]);
+  session.storyState = architectResult;
+  if (isAutoStyle) {
+    session.styleGuide = autoStyleGuide ?? STYLE_MAP["吉卜力"]!;
+    console.log(`[start] auto-selected style: ${session.styleGuide.slice(0, 60)}…`);
+  }
+  tlog("[start] Architect" + (isAutoStyle ? " + StyleSelector" : ""), tArchitect);
   console.log(
     `[start] storyBible: logline="${session.storyState.logline}" | genreTags="${session.storyState.genreTags}" | synopsis="${session.storyState.synopsis}"`,
   );
@@ -119,6 +146,41 @@ export async function visionDecide(
 ): Promise<VisionResponse> {
   const current = req.session.history.at(-1)?.scene ?? null;
   return interpret(config.vision, req.annotatedImageBase64, current);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+//  classifyFreeform — classifies a freeform text input at a choice node
+//  into match-choice / insert-beat / change-scene. Single lightweight
+//  LLM call; no image, no scene generation.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function classifyFreeform(
+  config: EngineConfig,
+  req: FreeformClassifyRequest,
+): Promise<FreeformClassifyResponse> {
+  const current = req.session.history.at(-1)?.scene ?? null;
+  const userMsg = buildFreeformClassifyUserMessage(
+    req.freeformText,
+    current?.scenePrompt,
+  );
+
+  const raw = await chat(config.text, [
+    { role: "system", content: FREEFORM_CLASSIFY_SYSTEM },
+    { role: "user", content: userMsg },
+  ], { temperature: 0, tag: "freeform-classify" });
+
+  const parsed = parseJsonLoose<{
+    classify?: string;
+    freeformAction?: string;
+  }>(raw);
+
+  const classify: FreeformClassify =
+    parsed.classify === "change-scene" ? "change-scene" : "insert-beat";
+
+  return {
+    classify,
+    freeformAction: parsed.freeformAction?.trim() || req.freeformText,
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────

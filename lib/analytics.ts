@@ -49,9 +49,11 @@ type AnalyticsEventData = {
     kind: "advance-beat" | "change-scene";
   };
   vision_click: { result: "insert-beat" | "change-scene" };
+  freeform_input: { scene_index: number; text_length: number };
   tts_toggle: { muted: boolean };
   fullscreen_toggle: { on: boolean };
   play_heartbeat: never;
+  gallery_export: { scene_count: number };
 };
 
 export type AnalyticsEvent = keyof AnalyticsEventData;

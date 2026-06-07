@@ -280,6 +280,12 @@ export type Session = {
    * share one aspect ratio. Absent → "landscape" (back-compat).
    */
   orientation?: Orientation;
+  /**
+   * Optional player-chosen display name. When set, NPC dialogue will address
+   * the player by this name instead of the generic "你". Stored client-side
+   * only (localStorage); never persisted server-side.
+   */
+  playerName?: string;
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -372,6 +378,8 @@ export type StartRequest = {
    * (default) keeps 16:9 widescreen. Locked for the whole session.
    */
   orientation?: Orientation;
+  /** Optional player display name — see Session.playerName. */
+  playerName?: string;
 };
 
 // /api/parse-style-image — vision LLM extracts a textual painting-style
@@ -456,6 +464,21 @@ export type VisionRequest = {
 export type VisionResponse = {
   intent: ClickIntent;
   classify: VisionClassify;
+};
+
+// /api/classify-freeform — classifies a player's freeform text input
+// into one of three paths: match an existing choice, insert a beat
+// in-scene, or trigger a scene change.
+export type FreeformClassifyRequest = {
+  session: Session;
+  freeformText: string;
+};
+
+export type FreeformClassify = "insert-beat" | "change-scene";
+
+export type FreeformClassifyResponse = {
+  classify: FreeformClassify;
+  freeformAction: string;
 };
 
 // /api/insert-beat — generates a single transient beat in response to

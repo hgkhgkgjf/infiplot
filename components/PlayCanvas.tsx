@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  DialogueHistoryModal,
+  type DialogueHistoryItem,
+} from "@/components/DialogueHistoryModal";
 import type { Beat, BeatChoice, Orientation } from "@infiplot/types";
 
 export type Phase =
@@ -170,10 +174,16 @@ export function PlayCanvas({
   onBackgroundClick,
   onAdvance,
   onSelectChoice,
+  onFreeformInput,
   fullViewport = false,
   orientation = "landscape",
+  playerName,
+  visionClickEnabled = true,
+  onOpenSettings,
   aboveCanvas,
   aboveCanvasLeft,
+  belowCanvas,
+  dialogueHistory = [],
 }: {
   imageUrl: string | null;
   audioSrc: string | null;
@@ -184,16 +194,30 @@ export function PlayCanvas({
   onBackgroundClick: (click: { x: number; y: number }) => void;
   onAdvance: () => void;
   onSelectChoice: (choice: BeatChoice) => void;
+  onFreeformInput?: (text: string) => void;
   fullViewport?: boolean;
   // 会话锁定的图片朝向。"portrait" 时整图铺满视口（object-fit:cover）、选项竖排、字号放大。
   orientation?: Orientation;
+  playerName?: string;
+  // 选择节点点击背景是否触发识图。关闭时背景点击保持静默，用户只能点选项。
+  visionClickEnabled?: boolean;
+  onOpenSettings?: () => void;
   // 渲染在图片正上方、右对齐的 slot（画面外、紧贴右上角）。
   aboveCanvas?: ReactNode;
   // 渲染在图片正上方、左对齐的 slot（画面外、紧贴左上角），与 aboveCanvas 水平镜像。
   aboveCanvasLeft?: ReactNode;
+  // 渲染在图片正下方、右对齐的 slot（画面外、紧贴右下角），与 aboveCanvas 垂直镜像。
+  belowCanvas?: ReactNode;
+  dialogueHistory?: DialogueHistoryItem[];
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [freeformOpen, setFreeformOpen] = useState(false);
+  const [freeformText, setFreeformText] = useState("");
+  const freeformInputRef = useRef<HTMLInputElement>(null);
+  const displaySpeaker = (s: string | undefined) =>
+    s === "你" && playerName ? playerName : s;
   const [audioDurationMs, setAudioDurationMs] = useState<number | undefined>(
     undefined,
   );
@@ -257,14 +281,18 @@ export function PlayCanvas({
   }
 
   function handleImageClick(e: React.MouseEvent<HTMLImageElement>) {
-    if (phase !== "ready" || !imgRef.current || !beat) return;
+    if (phase !== "ready" || !beat) return;
+    if (!typingDone) {
+      skipTypewriter();
+      return;
+    }
+    if (beat.next.type === "continue") {
+      onAdvance();
+      return;
+    }
+    if (!visionClickEnabled || !imgRef.current) return;
     const el = imgRef.current;
     const rect = el.getBoundingClientRect();
-    // Portrait renders with object-fit:cover, which scales the 9:16 image to
-    // FILL the box and crops the overflow — so the rendered box ≠ the full
-    // image. Map the click from box-space back into full-image-space via the
-    // cover geometry so the marker lands where the user tapped. Landscape's box
-    // matches the image aspect (no crop), so it keeps simple normalization.
     let x: number;
     let y: number;
     if (orientation === "portrait") {
@@ -278,18 +306,6 @@ export function PlayCanvas({
     } else {
       x = (e.clientX - rect.left) / rect.width;
       y = (e.clientY - rect.top) / rect.height;
-    }
-    // If the typewriter is still printing, a click completes it instantly
-    // (standard VN affordance) — the page never sees this click.
-    if (!typingDone) {
-      skipTypewriter();
-      return;
-    }
-    // For continue-type beats, image click advances; for choice beats,
-    // image click goes through vision (treat as freeform action).
-    if (beat.next.type === "continue") {
-      onAdvance();
-      return;
     }
     onBackgroundClick({
       x: Math.max(0, Math.min(1, x)),
@@ -310,6 +326,9 @@ export function PlayCanvas({
   }
 
   const interactive = phase === "ready" && !!imageUrl;
+  const imageClickable =
+    interactive &&
+    (!typingDone || beat?.next.type === "continue" || visionClickEnabled);
   const dimmed = phase === "transitioning";
 
   const portrait = orientation === "portrait";
@@ -374,7 +393,7 @@ export function PlayCanvas({
             onClick={handleImageClick}
             draggable={false}
             className={`block ${portrait ? "" : "w-auto h-auto"} select-none animate-fade-in transition-opacity duration-700 ease-out ${
-              interactive ? "cursor-pointer" : "cursor-wait"
+              imageClickable ? "cursor-pointer" : interactive ? "cursor-default" : "cursor-wait"
             } ${dimmed ? "opacity-40" : "opacity-100"}`}
             style={sizeStyle}
           />
@@ -394,6 +413,11 @@ export function PlayCanvas({
               {aboveCanvasLeft}
             </div>
           )}
+          {!fullViewport && belowCanvas && (
+            <div className="absolute top-full right-0 mt-2 flex items-center gap-2">
+              {belowCanvas}
+            </div>
+          )}
 
           {beat && (
             <div
@@ -404,24 +428,144 @@ export function PlayCanvas({
                   : undefined
               }
             >
+              {historyOpen && (
+                <DialogueHistoryModal
+                  items={dialogueHistory}
+                  portrait={portrait}
+                  onClose={() => setHistoryOpen(false)}
+                  playerName={playerName}
+                />
+              )}
+
               {choices.length > 0 && (
                 <div
                   className={`pointer-events-auto px-[3%] pb-[1.5%] flex items-stretch ${
                     portrait
-                      ? "flex-col gap-2 max-h-[45dvh] overflow-y-auto"
+                      ? "vn-scrollbar flex-col gap-2 max-h-[45dvh] overflow-y-auto"
                       : "gap-[1.5%]"
                   }`}
                 >
-                  {choices.map((choice, i) => (
-                    <ChoiceButton
-                      key={choice.id}
-                      index={i}
-                      label={choice.label}
-                      disabled={phase !== "ready"}
-                      vertical={portrait}
-                      onClick={() => onSelectChoice(choice)}
-                    />
-                  ))}
+                  {freeformOpen && onFreeformInput ? (
+                    /* ── Expanded: full-width input replaces all choices ── */
+                    <div
+                      className="flex-1 flex items-center gap-2"
+                      style={{
+                        background: "rgba(20, 14, 8, 0.68)",
+                        border: "1.5px solid rgba(180, 140, 80, 0.65)",
+                        borderRadius: "6px",
+                        backdropFilter: "blur(8px)",
+                        WebkitBackdropFilter: "blur(8px)",
+                        boxShadow: "0 2px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(200,165,90,0.12)",
+                        padding: "8px 12px",
+                      }}
+                    >
+                      <input
+                        ref={freeformInputRef}
+                        value={freeformText}
+                        onChange={(e) => setFreeformText(e.target.value.slice(0, 50))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.nativeEvent.isComposing && freeformText.trim() && phase === "ready") {
+                            onFreeformInput(freeformText.trim());
+                            setFreeformOpen(false);
+                            setFreeformText("");
+                          } else if (e.key === "Escape") {
+                            setFreeformOpen(false);
+                            setFreeformText("");
+                          }
+                        }}
+                        placeholder="输入你想说的或想做的..."
+                        maxLength={50}
+                        autoFocus
+                        className="flex-1 min-w-0 bg-transparent border-none outline-none font-serif text-[14px] placeholder:text-[rgba(200,185,155,0.50)]"
+                        style={{ color: "rgba(245,235,210,0.95)" }}
+                      />
+                      <button
+                        type="button"
+                        disabled={!freeformText.trim() || phase !== "ready"}
+                        onClick={() => {
+                          if (freeformText.trim()) {
+                            onFreeformInput(freeformText.trim());
+                            setFreeformOpen(false);
+                            setFreeformText("");
+                          }
+                        }}
+                        className="shrink-0 flex items-center justify-center w-8 h-8 rounded-sm transition-colors disabled:opacity-30"
+                        style={{ color: "rgba(195,155,75,0.9)" }}
+                      >
+                        <i className="fa-solid fa-paper-plane text-[12px]" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setFreeformOpen(false); setFreeformText(""); }}
+                        className="shrink-0 flex items-center justify-center w-8 h-8 rounded-sm transition-colors"
+                        style={{ color: "rgba(200,185,155,0.55)" }}
+                      >
+                        <i className="fa-solid fa-xmark text-[13px]" />
+                      </button>
+                    </div>
+                  ) : (
+                    /* ── Collapsed: normal choices + small freeform trigger ── */
+                    <>
+                      {choices.map((choice, i) => (
+                        <ChoiceButton
+                          key={choice.id}
+                          index={i}
+                          label={choice.label}
+                          disabled={phase !== "ready"}
+                          vertical={portrait}
+                          onClick={() => onSelectChoice(choice)}
+                        />
+                      ))}
+                      {onFreeformInput && (
+                        <button
+                          type="button"
+                          disabled={phase !== "ready"}
+                          onClick={() => {
+                            setFreeformOpen(true);
+                            requestAnimationFrame(() => freeformInputRef.current?.focus());
+                          }}
+                          className="group shrink-0 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-wait"
+                          style={{
+                            background: "rgba(20, 14, 8, 0.45)",
+                            border: "1.5px dashed rgba(180, 140, 80, 0.40)",
+                            borderRadius: "6px",
+                            backdropFilter: "blur(8px)",
+                            WebkitBackdropFilter: "blur(8px)",
+                            width: portrait ? "100%" : "42px",
+                            padding: portrait ? "10px 16px" : "0",
+                          }}
+                          title="自由输入"
+                        >
+                          <span
+                            className="opacity-0 group-hover:opacity-100 absolute inset-0 rounded-[5px] transition-opacity duration-200 pointer-events-none"
+                            style={{
+                              background: "rgba(180,140,60,0.08)",
+                              border: "1.5px dashed rgba(200,165,90,0.70)",
+                            }}
+                          />
+                          {portrait ? (
+                            <span className="relative flex items-center gap-2">
+                              <i
+                                className="fa-solid fa-pen-to-square text-[11px]"
+                                style={{ color: "rgba(195,155,75,0.60)" }}
+                              />
+                              <span
+                                className="font-serif text-[13px]"
+                                style={{ color: "rgba(200,185,155,0.70)" }}
+                              >
+                                自由输入
+                              </span>
+                            </span>
+                          ) : (
+                            <i
+                              className="fa-solid fa-pen-to-square text-[12px] relative"
+                              style={{ color: "rgba(195,155,75,0.55)" }}
+                            />
+                          )}
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
@@ -461,7 +605,7 @@ export function PlayCanvas({
                       }`}
                       style={{ color: "rgba(205,165,90,0.92)" }}
                     >
-                      {beat.speaker}
+                      {displaySpeaker(beat.speaker)}
                     </p>
                   )}
 
@@ -487,13 +631,43 @@ export function PlayCanvas({
 
                   {typingDone && beat.next.type === "continue" && (
                     <span
-                      className="absolute bottom-[6px] right-[10px] text-[10px] animate-slow-pulse"
+                      className={`absolute bottom-[6px] ${onOpenSettings ? "right-[74px]" : "right-[42px]"} text-[10px] animate-slow-pulse`}
                       style={{ color: "rgba(195,155,75,0.7)" }}
                       aria-hidden
                     >
                       ▼
                     </span>
                   )}
+
+                  {onOpenSettings && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenSettings();
+                      }}
+                      className="absolute bottom-[6px] right-[8px] flex h-7 w-7 items-center justify-center text-[rgba(195,155,75,0.78)] transition-colors hover:text-[rgba(245,235,210,0.96)]"
+                      aria-label="打开设置"
+                      title="设置"
+                    >
+                      <i className="fa-solid fa-gear text-[12px]" />
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setHistoryOpen(true);
+                    }}
+                    className={`absolute bottom-[6px] ${
+                      onOpenSettings ? "right-[40px]" : "right-[8px]"
+                    } flex h-7 w-7 items-center justify-center text-[rgba(195,155,75,0.78)] transition-colors hover:text-[rgba(245,235,210,0.96)]`}
+                    aria-label="打开剧情回溯"
+                    title="剧情回溯"
+                  >
+                    <i className="fa-solid fa-clock-rotate-left text-[12px]" />
+                  </button>
                 </div>
               )}
             </div>
@@ -559,6 +733,11 @@ export function PlayCanvas({
           {!fullViewport && aboveCanvasLeft && (
             <div className="absolute bottom-full left-0 mb-2 flex items-center gap-2">
               {aboveCanvasLeft}
+            </div>
+          )}
+          {!fullViewport && belowCanvas && (
+            <div className="absolute top-full right-0 mt-2 flex items-center gap-2">
+              {belowCanvas}
             </div>
           )}
         </div>
