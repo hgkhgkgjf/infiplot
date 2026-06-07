@@ -11,7 +11,7 @@ import {
   type Gender,
 } from "@/lib/options";
 import { readStoredTtsConfig } from "@/lib/clientTtsConfig";
-import { TtsKeyModal } from "@/components/TtsKeyModal";
+import { SettingsModal, readStoredPlayerName } from "@/components/SettingsModal";
 
 /* ============================================================================
    InfiPlot · 首页（编辑式视觉风格 · 居中构图，呼应低保真原型）
@@ -47,7 +47,6 @@ const OPTS: Opt[] = [
   { label: "性向", items: [...GENDERS] },
   { label: "绘画风格", modal: true, items: [...ART_STYLES] },
   { label: "剧情风格", items: [...PLOT_STYLES], defaultIndex: 1 },
-  { label: "语音配音", items: ["关闭", "开启"], defaultIndex: 1 },
   { label: "内容节奏", items: [...PACINGS], defaultIndex: 1 },
 ];
 
@@ -1239,12 +1238,13 @@ export default function HomePage() {
   // 顶部使用提示：默认展示，用户可点 × 永久关闭（localStorage:infiplot:hintClosed）。
   const [hintClosed, setHintClosed] = useState(false);
 
-  // 自带 TTS Key 弹窗：可选增强，Key 只存浏览器、绝不经过服务器。
-  const [ttsOpen, setTtsOpen] = useState(false);
+  // 统一设置弹窗（名字 + 配音 + TTS Key）：可选增强，数据只存浏览器。
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [ttsConfigured, setTtsConfigured] = useState(false);
+  const [playerName, setPlayerName] = useState("");
+  const [audioEnabled, setAudioEnabled] = useState(true);
 
   const styleRow = OPTS.findIndex((o) => o.modal);
-  const voiceRow = OPTS.findIndex((o) => o.label === "语音配音");
   const genderIndex = sel[0] ?? 0;
   const gender = (OPTS[0]!.items[genderIndex] as Gender) ?? "男性向";
   const phrases = EXAMPLE_PHRASES[gender];
@@ -1286,9 +1286,14 @@ export default function HomePage() {
     }
   }, []);
 
-  // 启动时回填「已启用」徽标——读 localStorage 判断用户是否已存过 Key。
+  // 启动时回填配置状态——读 localStorage 判断用户是否已存过 Key / 名字 / 配音偏好。
   useEffect(() => {
     setTtsConfigured(readStoredTtsConfig() != null);
+    setPlayerName(readStoredPlayerName());
+    try {
+      const stored = localStorage.getItem("infiplot:muted");
+      if (stored === "1") setAudioEnabled(false);
+    } catch { /* ignore */ }
   }, []);
 
   // 输入框随内容自动增高：长文本整段可见（打字与点卡片填入都覆盖）。
@@ -1315,8 +1320,7 @@ export default function HomePage() {
       prompt.trim() || (phrases[phraseIdx] ?? "").trim();
     const artStyle = ART_STYLES[sel[1] ?? 0] ?? "自动";
     const plotStyle = PLOT_STYLES[sel[2] ?? 1] ?? "多线转折";
-    const voice = OPTS[3]!.items[sel[3] ?? 1]!;
-    const pace = PACINGS[sel[4] ?? 1] ?? "紧凑爽快";
+    const pace = PACINGS[sel[3] ?? 1] ?? "紧凑爽快";
 
     // worldSetting 顺序很重要：玩家输入若存在，必须放在最前面、单独成段、
     // 用强指令包住，否则模型会把它当成夹在风格说明里的背景参考、扩写出
@@ -1352,8 +1356,6 @@ export default function HomePage() {
         artStyle === "自定义风格" ? DEFAULT_STYLE : artStyle;
       styleGuide = STYLE_MAP[effectiveStyle] ?? STYLE_MAP[DEFAULT_STYLE]!;
     }
-    const audioEnabled = voice === "开启";
-
     // 只有「自定义」风格选中、且确实上传了参考图时才透传——其他预设没必要
     // 占用 reference slot（也避免 styleGuide 已经是文本预设、画师收到不相关
     // 参考图反而产生干扰）。
@@ -1373,7 +1375,7 @@ export default function HomePage() {
 
     sessionStorage.setItem(
       "infiplot:custom",
-      JSON.stringify({ worldSetting, styleGuide, audioEnabled, styleReferenceImage }),
+      JSON.stringify({ worldSetting, styleGuide, audioEnabled, styleReferenceImage, playerName: playerName || undefined }),
     );
     router.push("/play?custom=1");
   };
@@ -1391,11 +1393,9 @@ export default function HomePage() {
   // 其余选项（剧情风格 / 内容节奏）在预烘焙时已锁成「多线转折 / 紧凑爽快」
   // 的红果默认基调，对精选卡不再生效。
   const onCardClick = (idx: number, _card: StoryContent) => {
-    const voice = OPTS[3]!.items[sel[3] ?? 1]!;
-    const audioEnabled = voice === "开启";
     sessionStorage.setItem(
       "infiplot:custom",
-      JSON.stringify({ worldSetting: "", styleGuide: "", audioEnabled }),
+      JSON.stringify({ worldSetting: "", styleGuide: "", audioEnabled, playerName }),
     );
     track("game_start", {
       source: "curated",
@@ -1456,11 +1456,7 @@ export default function HomePage() {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 onKeyDown={(e) => {
-                  if (
-                    e.key === "Enter" &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing
-                  ) {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault();
                     start();
                   }
@@ -1518,30 +1514,23 @@ export default function HomePage() {
                 />
               </div>
             ))}
-          </div>
-
-          {/* 自带 TTS Key 入口：公共语音模型有 RPM/TPM 限额，高并发易静音；
-              填自己的小米 MiMo Key（免费）→ 稳定配音、延迟更低，且 Key 只存本地。 */}
-          <div className="mt-5 flex justify-center">
-            <button
-              type="button"
-              onClick={() => setTtsOpen(true)}
-              className={
-                "inline-flex items-center gap-2 rounded-full border px-4 py-1.5 font-sans text-xs md:text-[13px] transition-colors " +
-                (ttsConfigured
-                  ? "border-ember-500/40 bg-ember-500/5 text-ember-500 hover:bg-ember-500/10"
-                  : "border-clay-900/15 text-clay-500 hover:border-clay-900/30 hover:text-clay-700")
-              }
-            >
-              <i
-                className={
-                  ttsConfigured
-                    ? "fa-solid fa-circle-check text-[11px]"
-                    : "fa-solid fa-microphone-lines text-[11px]"
-                }
-              />
-              {ttsConfigured ? "自带配音 Key · 已启用" : "经常没声音？自带配音 Key（可选）"}
-            </button>
+            {/* 设置入口：与 CategorySelect 视觉一致，点击打开 modal */}
+            <div className="text-left">
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                className="group flex items-center gap-2.5 pb-1.5 border-b border-clay-900/20 hover:border-clay-900/45 transition-colors"
+              >
+                <span className="text-[10px] smallcaps text-clay-500">设置</span>
+                <span className={
+                  "font-serif text-base md:text-lg " +
+                  (ttsConfigured || playerName ? "text-ember-500" : "text-clay-900")
+                }>
+                  {playerName || (ttsConfigured ? "已配置" : "未配置")}
+                </span>
+                <i className="fa-solid fa-gear text-[9px] text-clay-400" />
+              </button>
+            </div>
           </div>
 
           {/* 使用提示：可被用户永久关闭（localStorage:infiplot:hintClosed） */}
@@ -1550,6 +1539,8 @@ export default function HomePage() {
               <p className="font-serif text-[13px] md:text-sm leading-relaxed text-clay-500">
                 输入你的想象、配置风格，点击「开始」即可游玩；也可以从下方的精选故事集，挑一篇快速体验{" "}
                 <em className="not-italic text-ember-500">InfiPlot</em>。
+                点击「<span className="text-ember-500">设置</span>」可以配置你的名字和配音
+                API Key，让角色以你的名字称呼你，配音体验也更稳定。
               </p>
               <button
                 type="button"
@@ -1707,18 +1698,14 @@ export default function HomePage() {
           setCustomStyleRefImage={setCustomStyleRefImage}
         />
       )}
-      {ttsOpen && (
-        <TtsKeyModal
-          onClose={() => setTtsOpen(false)}
-          onSaved={(configured) => {
-            setTtsConfigured(configured);
-            // 启用自带 Key 时顺手把「语音配音」拨到「开启」——否则用户配了 Key
-            // 却还是静音，体验自相矛盾。停用时不动其选择，尊重用户原本的偏好。
-            if (configured && voiceRow >= 0) {
-              const onIdx = OPTS[voiceRow]!.items.indexOf("开启");
-              if (onIdx >= 0)
-                setSel((s) => s.map((v, j) => (j === voiceRow ? onIdx : v)));
-            }
+      {settingsOpen && (
+        <SettingsModal
+          initialAudioEnabled={audioEnabled}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={(settings) => {
+            setTtsConfigured(settings.ttsConfigured);
+            setPlayerName(settings.playerName);
+            setAudioEnabled(settings.audioEnabled);
           }}
         />
       )}

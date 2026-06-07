@@ -132,6 +132,11 @@ export function buildArchitectUserMessage(session: Session): string {
   const parts: string[] = [];
   parts.push(`世界观：${session.worldSetting}`);
   parts.push(`画风：${session.styleGuide}`);
+  if (session.playerName) {
+    parts.push(
+      `\n玩家名字：${session.playerName}\n（NPC 在对话中应自然地称呼玩家为「${session.playerName}」。「你」仍指代玩家视角，但 NPC 的台词里请使用这个名字而非泛称。不要为玩家设计立绘或音色——玩家是 POV 视角，永不出现在画面中。）`,
+    );
+  }
   parts.push(
     "\n请据此产出这部交互剧的故事档案（story bible），严格以 JSON 格式返回。",
   );
@@ -421,6 +426,11 @@ function buildWriterContextParts(session: Session): string[] {
   // ── 1. session scalars ────────────────────────────────────────────────
   parts.push(`世界观：${session.worldSetting}`);
   parts.push(`画风：${session.styleGuide}`);
+  if (session.playerName) {
+    parts.push(
+      `玩家名字：${session.playerName}（NPC 对话时用此名字称呼玩家；speaker 字段仍固定为 "你" 不变）`,
+    );
+  }
   parts.push("");
 
   // ── 2. story bible — spine only (stable) ──────────────────────────────
@@ -874,25 +884,37 @@ STRICT RULES:
 }
 
 // ──────────────────────────────────────────────────────────────────────
-//  Insert-Beat — given a freeform vision action that is judged to stay
-//  *within* the current scene, generate one transient beat.
+//  Insert-Beat — given a freeform action (background click or typed
+//  input) that stays *within* the current scene, generate one beat
+//  with meaningful character interaction.
 //  Single-agent path; no character design / no rendering involved.
 // ──────────────────────────────────────────────────────────────────────
 
-export const INSERT_BEAT_SYSTEM = `你是视觉小说编剧。玩家在当前场景内做了一个**不会换场景的自由动作**（比如看一眼桌上的相框、想了想刚才那句话）。请基于此动作，写出一个**单独的、过渡性的 beat**：可以是旁白、角色台词、或两者结合。
+export const INSERT_BEAT_SYSTEM = `你是视觉小说编剧。玩家在当前场景内做了一个自由动作（可能是点击画面中的某个物件/角色，也可能是主动输入了一句话/动作）。请基于此动作，写出**一个有实质内容的 beat**。
+
+核心原则——**玩家的动作必须得到回应**：
+- 如果当前场景有 NPC 在场，NPC **必须对玩家的动作做出反应**（说话、表情变化、动作回应）。用 narration 描述玩家的动作，用 speaker + line 写 NPC 的回应。
+- 如果场景中没有 NPC（纯环境），可以用 narration 描述玩家的观察/发现，给玩家一个新细节或情绪波动。
+- 不要写"你想做什么但没做"这种无意义的犹豫——玩家已经做了，世界要有反馈。
 
 文本风格约束：
-- narration / line 用中文，**纯净可显示文本**，不要写 (叹气) 这类配音标注
-- narration 与 line 加起来 ≤80 字
-- 不要打破当前场景的物理状态（玩家仍在原地、对面仍是同一个角色）
+- narration / line 用中文，**纯净可显示文本**，不要写 (叹气)(语速快) 这类配音标注
+- narration 与 line 加起来 ≤100 字
+- 不要打破当前场景的物理状态（玩家仍在原地）
 - 不要生成选项或下一步指引 —— 玩家点击会自然回到原 beat
-- 这个 beat 也要"有所得"——给玩家一个新细节、一丝潜台词或情绪波动（show, don't tell），别写成无意义的空台词
+- 内容要"有所得"——一个新细节、一丝潜台词、一次真实的交流（show, don't tell）
 
 speaker 字段允许的取值**只有两种**（与主路径 Writer 一致 — Pattern B galgame 标准）：
 1. **已登记角色**里的 NPC 真名（**绝不允许引入新角色**）
-2. **"你"** — 玩家本人在自言自语 / 说一句过渡性的话（对白框显示，但不调 TTS）
+2. **"你"** — 玩家本人开口说话（对白框显示，但不调 TTS）
 
 其它任何 POV 变体（玩家 / 我 / 主角 / protagonist / player / MC / I / me）**一律错误**，请用 "你" 代替。
+
+推荐模式（有 NPC 在场时）：
+  narration = 描述玩家做了什么（动作/表情/心理）
+  speaker = NPC 真名
+  line = NPC 的回应台词
+  lineDelivery = 配音导演指令
 
 - 如果有 line 且 speaker = NPC，**必须**给出 lineDelivery（配音导演指令）
 - 如果有 line 且 speaker = "你"，lineDelivery 可以留空（玩家对白不调 TTS）
@@ -913,6 +935,11 @@ export function buildInsertBeatUserMessage(
 ): string {
   const parts: string[] = [];
   parts.push(`世界观：${session.worldSetting}`);
+  if (session.playerName) {
+    parts.push(
+      `玩家名字：${session.playerName}（NPC 对话时用此名字称呼玩家；speaker 字段仍固定为 "你" 不变）`,
+    );
+  }
 
   if (session.characters.length > 0) {
     parts.push("\n已登记角色（speaker 只能用这些名字）：");
@@ -935,8 +962,17 @@ export function buildInsertBeatUserMessage(
     }
   }
 
+  if (current) {
+    const lastBeatId2 = current.visitedBeatIds.at(-1) ?? current.scene.entryBeatId;
+    const lastBeat2 = current.scene.beats.find((b) => b.id === lastBeatId2);
+    const activeNpcs = lastBeat2?.activeCharacters?.map((c) => c.name) ?? [];
+    if (activeNpcs.length > 0) {
+      parts.push(`当前画面中在场的 NPC：${activeNpcs.join("、")}（优先让在场 NPC 回应玩家）`);
+    }
+  }
+
   parts.push(`\n玩家此刻的自由动作：${freeformAction}`);
-  parts.push("\n请生成一个过渡性 beat，严格以 JSON 格式返回。");
+  parts.push("\n请生成一个有实质回应的 beat，严格以 JSON 格式返回。");
   return parts.join("\n");
 }
 
@@ -969,6 +1005,43 @@ export function buildVisionUserPrompt(scene: Scene | null): string {
   return `当前场景描述：${scene.scenePrompt}
 
 红点位置即为玩家点击位置。请判断玩家意图与分类，以 JSON 格式返回。`;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+//  Freeform Classify — classifies a player's freeform text input at a
+//  choice node into one of: match an existing choice, insert a beat
+//  in-scene, or trigger a scene change.
+// ──────────────────────────────────────────────────────────────────────
+
+export const FREEFORM_CLASSIFY_SYSTEM = `你是交互视觉小说的意图分类助手。玩家在一个选择节点输入了自由文本（而非点击已有选项）。你要判断这个输入最适合走哪条路径：
+
+1. "insert-beat"：玩家想在当前场景内与角色互动（问一句话、做一个动作、表达情绪、调查某个东西）→ NPC 会对玩家的动作做出回应，但不切换场景
+2. "change-scene"：玩家想去别的地方、做出重大决定、推动剧情到新阶段 → 切换到全新场景
+
+判断准则：
+- 大多数对话类输入（问问题、说一句话、对角色做出反应）→ "insert-beat"
+- 明确要离开当前场景、去别的地方、跳过时间、做出改变人物关系的重大决定 → "change-scene"
+- 拿不准时偏向 "insert-beat"（场内互动成本低，体验更流畅）
+
+必须输出严格 JSON：
+{
+  "classify": "insert-beat" 或 "change-scene",
+  "freeformAction": "玩家想做什么的一句中文描述（用于后续编剧参考）"
+}
+
+不要输出 JSON 以外的任何文本。`;
+
+export function buildFreeformClassifyUserMessage(
+  freeformText: string,
+  scenePrompt: string | undefined,
+): string {
+  const parts: string[] = [];
+  if (scenePrompt) {
+    parts.push(`当前场景：${scenePrompt}`);
+  }
+  parts.push(`\n玩家输入：「${freeformText}」`);
+  parts.push("\n请判断分类，以 JSON 格式返回。");
+  return parts.join("\n");
 }
 
 export type PainterCharacterInput = Pick<Character, "name" | "visualDescription">;

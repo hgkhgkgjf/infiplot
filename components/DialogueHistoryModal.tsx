@@ -16,11 +16,15 @@ export function DialogueHistoryModal({
   items,
   portrait,
   onClose,
+  playerName,
 }: {
   items: DialogueHistoryItem[];
   portrait: boolean;
   onClose: () => void;
+  playerName?: string;
 }) {
+  const displaySpeaker = (s: string | undefined) =>
+    s === "你" && playerName ? playerName : s;
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,7 +101,7 @@ export function DialogueHistoryModal({
                     </span>
                     {item.speaker && (
                       <span className="font-serif text-[12px] text-[rgba(205,165,90,0.92)]">
-                        {item.speaker}
+                        {displaySpeaker(item.speaker)}
                       </span>
                     )}
                   </div>

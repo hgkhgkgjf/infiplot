@@ -2,6 +2,7 @@ export {
   startSession,
   requestScene,
   visionDecide,
+  classifyFreeform,
   requestInsertBeat,
   requestBeatAudio,
 } from "./orchestrator";

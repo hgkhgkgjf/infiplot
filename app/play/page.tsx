@@ -18,6 +18,7 @@ import {
 import type { DialogueHistoryItem } from "@/components/DialogueHistoryModal";
 import type { GalleryDoc, GalleryScene } from "@/app/gallery/page";
 import { TtsKeyModal } from "@/components/TtsKeyModal";
+import { readStoredPlayerName } from "@/components/SettingsModal";
 import { annotateClick } from "@/lib/annotateClient";
 import { loadClientTtsConfig } from "@/lib/clientTtsConfig";
 import { PRESETS } from "@/lib/presets";
@@ -27,6 +28,7 @@ import type {
   BeatChoice,
   Character,
   CharacterVoice,
+  FreeformClassifyResponse,
   InsertBeatResponse,
   Orientation,
   Scene,
@@ -1107,11 +1109,12 @@ function PlayInner() {
       styleGuide: string;
       styleReferenceImage?: string;
       orientation?: Orientation;
+      playerName?: string;
     } | null = null;
     if (!cardName) {
       if (presetId) {
         const p = PRESETS.find((x) => x.id === presetId);
-        if (p) livePayload = { worldSetting: p.worldSetting, styleGuide: p.styleGuide };
+        if (p) livePayload = { worldSetting: p.worldSetting, styleGuide: p.styleGuide, playerName: readStoredPlayerName() || undefined };
       } else if (isCustom) {
         const stored = sessionStorage.getItem("infiplot:custom");
         if (stored) {
@@ -1121,11 +1124,13 @@ function PlayInner() {
               styleGuide: string;
               audioEnabled?: boolean;
               styleReferenceImage?: string;
+              playerName?: string;
             };
             livePayload = {
               worldSetting: parsed.worldSetting,
               styleGuide: parsed.styleGuide,
               styleReferenceImage: parsed.styleReferenceImage || undefined,
+              playerName: parsed.playerName || undefined,
             };
             // audioEnabled 已在 useState 初始化时反向投射到 muted；这里无需再额外存。
           } catch {
@@ -1224,6 +1229,7 @@ function PlayInner() {
           storyState: data.storyState,
           styleReferenceImage: data.styleReferenceImage,
           orientation: data.scene.orientation ?? sessionOrientation,
+          playerName: livePayload?.playerName || readStoredPlayerName() || undefined,
         };
         visitedBeatsRef.current = [data.scene.entryBeatId];
         setSession(initial);
@@ -1436,6 +1442,135 @@ function PlayInner() {
     void performSceneTransition(promise, exit, visited, choice.label);
   }
 
+  async function onFreeformInput(text: string) {
+    if (phase !== "ready" || !session || !currentScene) return;
+
+    track("freeform_input", {
+      scene_index: session.history.length,
+      text_length: text.length,
+    });
+
+    setPhase("vision-thinking");
+
+    try {
+      const classifyRes = await fetch("/api/classify-freeform", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          session: stripVoicesForTransport(session),
+          freeformText: text,
+        }),
+      });
+      if (!classifyRes.ok) {
+        const j = (await classifyRes.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? classifyRes.statusText);
+      }
+      const decision = (await classifyRes.json()) as FreeformClassifyResponse;
+
+      if (decision.classify === "insert-beat") {
+        // Interactive beat: NPC responds to the player's action, scene stays
+        setPhase("inserting-beat");
+        const insertRes = await fetch("/api/insert-beat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session: stripVoicesForTransport(session),
+            freeformAction: decision.freeformAction,
+            clientTts: !!byoTtsRef.current,
+          }),
+        });
+        if (!insertRes.ok) {
+          const j = (await insertRes.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? insertRes.statusText);
+        }
+        const { partial, characters: insertChars } =
+          (await insertRes.json()) as InsertBeatResponse;
+
+        const fromBeatId =
+          currentBeatRef.current?.id ?? currentScene.entryBeatId;
+        const newBeatId = `b_ins_${Date.now()}_${Math.random()
+          .toString(36)
+          .slice(2, 6)}`;
+        const newBeat: Beat = {
+          id: newBeatId,
+          narration: partial.narration,
+          speaker: partial.speaker,
+          line: partial.line,
+          lineDelivery: partial.lineDelivery,
+          next: { type: "continue", nextBeatId: fromBeatId },
+        };
+
+        const patched: Scene = {
+          ...currentScene,
+          beats: [...currentScene.beats, newBeat],
+        };
+        const nextSession: Session = {
+          ...session,
+          history: session.history.map((h, i, arr) =>
+            i === arr.length - 1 ? { ...h, scene: patched } : h,
+          ),
+          characters: mergeCharactersPreserveVoice(
+            session.characters,
+            insertChars,
+          ),
+        };
+        setSession(nextSession);
+        setCurrentScene(patched);
+        setCurrentBeatId(newBeatId);
+        if (newBeat.speaker && newBeat.line) {
+          void fetchBeatAudio(nextSession, {
+            id: newBeatId,
+            speaker: newBeat.speaker,
+            line: newBeat.line,
+            lineDelivery: newBeat.lineDelivery,
+          });
+        }
+        setLastExitLabel(decision.freeformAction);
+        setPhase("ready");
+        return;
+      }
+
+      // change-scene path
+      const visited = [...visitedBeatsRef.current];
+      const exit: SceneExit = {
+        kind: "freeform",
+        action: decision.freeformAction,
+      };
+      clearPool(poolRef.current);
+
+      const specSession: Session = {
+        ...session,
+        history: session.history.map((h, i, arr) =>
+          i === arr.length - 1
+            ? { ...h, visitedBeatIds: visited, exit }
+            : h,
+        ),
+      };
+
+      const promise = (async () => {
+        const res = await fetch("/api/scene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session: stripVoicesForTransport(specSession),
+            clientTts: !!byoTtsRef.current,
+          }),
+        });
+        if (!res.ok) {
+          const j = (await res.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? res.statusText);
+        }
+        return (await res.json()) as SceneResponse;
+      })();
+
+      setPendingClick(null);
+      void performSceneTransition(promise, exit, visited, decision.freeformAction);
+    } catch (e) {
+      setError(String(e));
+      setPhase("ready");
+    }
+  }
+
   async function onBackgroundClick(click: { x: number; y: number }) {
     if (phase !== "ready" || !session || !currentScene || !imageUrl) return;
     setPhase("vision-thinking");
@@ -1623,7 +1758,9 @@ function PlayInner() {
           onBackgroundClick={onBackgroundClick}
           onAdvance={onAdvance}
           onSelectChoice={onSelectChoice}
+          onFreeformInput={onFreeformInput}
           orientation={orientation}
+          playerName={session?.playerName}
           fullViewport
           dialogueHistory={dialogueHistory}
         />
@@ -1698,7 +1835,9 @@ function PlayInner() {
           onBackgroundClick={onBackgroundClick}
           onAdvance={onAdvance}
           onSelectChoice={onSelectChoice}
+          onFreeformInput={onFreeformInput}
           orientation={orientation}
+          playerName={session?.playerName}
           dialogueHistory={dialogueHistory}
           aboveCanvas={
             <button

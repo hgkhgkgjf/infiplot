@@ -2,6 +2,9 @@ import type {
   BeatAudioRequest,
   BeatAudioResponse,
   EngineConfig,
+  FreeformClassify,
+  FreeformClassifyRequest,
+  FreeformClassifyResponse,
   InsertBeatRequest,
   InsertBeatResponse,
   Session,
@@ -13,10 +16,16 @@ import type {
   VisionResponse,
 } from "@infiplot/types";
 import { coerceOrientation } from "@infiplot/types";
+import { chat } from "@infiplot/ai-client";
 import { runArchitect } from "./agents/architect";
 import { selectStyle } from "./agents/styleSelector";
 import { directInsertBeat, directScene } from "./director";
 import { STYLE_MAP } from "@/lib/options";
+import { parseJsonLoose } from "./jsonParser";
+import {
+  FREEFORM_CLASSIFY_SYSTEM,
+  buildFreeformClassifyUserMessage,
+} from "./prompts";
 import { synthesizeBeat } from "./voice";
 import { interpret } from "./vision";
 
@@ -52,6 +61,7 @@ export async function startSession(
     characters: [],
     styleReferenceImage: req.styleReferenceImage?.trim() || undefined,
     orientation: coerceOrientation(req.orientation),
+    playerName: req.playerName?.trim() || undefined,
   };
 
   // Stage 0 — Architect (+ optional auto style selection, in parallel).
@@ -136,6 +146,41 @@ export async function visionDecide(
 ): Promise<VisionResponse> {
   const current = req.session.history.at(-1)?.scene ?? null;
   return interpret(config.vision, req.annotatedImageBase64, current);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+//  classifyFreeform — classifies a freeform text input at a choice node
+//  into match-choice / insert-beat / change-scene. Single lightweight
+//  LLM call; no image, no scene generation.
+// ──────────────────────────────────────────────────────────────────────
+
+export async function classifyFreeform(
+  config: EngineConfig,
+  req: FreeformClassifyRequest,
+): Promise<FreeformClassifyResponse> {
+  const current = req.session.history.at(-1)?.scene ?? null;
+  const userMsg = buildFreeformClassifyUserMessage(
+    req.freeformText,
+    current?.scenePrompt,
+  );
+
+  const raw = await chat(config.text, [
+    { role: "system", content: FREEFORM_CLASSIFY_SYSTEM },
+    { role: "user", content: userMsg },
+  ], { temperature: 0, tag: "freeform-classify" });
+
+  const parsed = parseJsonLoose<{
+    classify?: string;
+    freeformAction?: string;
+  }>(raw);
+
+  const classify: FreeformClassify =
+    parsed.classify === "change-scene" ? "change-scene" : "insert-beat";
+
+  return {
+    classify,
+    freeformAction: parsed.freeformAction?.trim() || req.freeformText,
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────

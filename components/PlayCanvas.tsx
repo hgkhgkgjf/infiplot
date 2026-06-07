@@ -174,8 +174,10 @@ export function PlayCanvas({
   onBackgroundClick,
   onAdvance,
   onSelectChoice,
+  onFreeformInput,
   fullViewport = false,
   orientation = "landscape",
+  playerName,
   aboveCanvas,
   aboveCanvasLeft,
   belowCanvas,
@@ -190,9 +192,11 @@ export function PlayCanvas({
   onBackgroundClick: (click: { x: number; y: number }) => void;
   onAdvance: () => void;
   onSelectChoice: (choice: BeatChoice) => void;
+  onFreeformInput?: (text: string) => void;
   fullViewport?: boolean;
   // 会话锁定的图片朝向。"portrait" 时整图铺满视口（object-fit:cover）、选项竖排、字号放大。
   orientation?: Orientation;
+  playerName?: string;
   // 渲染在图片正上方、右对齐的 slot（画面外、紧贴右上角）。
   aboveCanvas?: ReactNode;
   // 渲染在图片正上方、左对齐的 slot（画面外、紧贴左上角），与 aboveCanvas 水平镜像。
@@ -204,6 +208,11 @@ export function PlayCanvas({
   const imgRef = useRef<HTMLImageElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [freeformOpen, setFreeformOpen] = useState(false);
+  const [freeformText, setFreeformText] = useState("");
+  const freeformInputRef = useRef<HTMLInputElement>(null);
+  const displaySpeaker = (s: string | undefined) =>
+    s === "你" && playerName ? playerName : s;
   const [audioDurationMs, setAudioDurationMs] = useState<number | undefined>(
     undefined,
   );
@@ -424,6 +433,7 @@ export function PlayCanvas({
                   items={dialogueHistory}
                   portrait={portrait}
                   onClose={() => setHistoryOpen(false)}
+                  playerName={playerName}
                 />
               )}
 
@@ -435,16 +445,127 @@ export function PlayCanvas({
                       : "gap-[1.5%]"
                   }`}
                 >
-                  {choices.map((choice, i) => (
-                    <ChoiceButton
-                      key={choice.id}
-                      index={i}
-                      label={choice.label}
-                      disabled={phase !== "ready"}
-                      vertical={portrait}
-                      onClick={() => onSelectChoice(choice)}
-                    />
-                  ))}
+                  {freeformOpen && onFreeformInput ? (
+                    /* ── Expanded: full-width input replaces all choices ── */
+                    <div
+                      className="flex-1 flex items-center gap-2"
+                      style={{
+                        background: "rgba(20, 14, 8, 0.68)",
+                        border: "1.5px solid rgba(180, 140, 80, 0.65)",
+                        borderRadius: "6px",
+                        backdropFilter: "blur(8px)",
+                        WebkitBackdropFilter: "blur(8px)",
+                        boxShadow: "0 2px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(200,165,90,0.12)",
+                        padding: "8px 12px",
+                      }}
+                    >
+                      <input
+                        ref={freeformInputRef}
+                        value={freeformText}
+                        onChange={(e) => setFreeformText(e.target.value.slice(0, 50))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.nativeEvent.isComposing && freeformText.trim() && phase === "ready") {
+                            onFreeformInput(freeformText.trim());
+                            setFreeformOpen(false);
+                            setFreeformText("");
+                          } else if (e.key === "Escape") {
+                            setFreeformOpen(false);
+                            setFreeformText("");
+                          }
+                        }}
+                        placeholder="输入你想说的或想做的..."
+                        maxLength={50}
+                        autoFocus
+                        className="flex-1 min-w-0 bg-transparent border-none outline-none font-serif text-[14px] placeholder:text-[rgba(200,185,155,0.50)]"
+                        style={{ color: "rgba(245,235,210,0.95)" }}
+                      />
+                      <button
+                        type="button"
+                        disabled={!freeformText.trim() || phase !== "ready"}
+                        onClick={() => {
+                          if (freeformText.trim()) {
+                            onFreeformInput(freeformText.trim());
+                            setFreeformOpen(false);
+                            setFreeformText("");
+                          }
+                        }}
+                        className="shrink-0 flex items-center justify-center w-8 h-8 rounded-sm transition-colors disabled:opacity-30"
+                        style={{ color: "rgba(195,155,75,0.9)" }}
+                      >
+                        <i className="fa-solid fa-paper-plane text-[12px]" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setFreeformOpen(false); setFreeformText(""); }}
+                        className="shrink-0 flex items-center justify-center w-8 h-8 rounded-sm transition-colors"
+                        style={{ color: "rgba(200,185,155,0.55)" }}
+                      >
+                        <i className="fa-solid fa-xmark text-[13px]" />
+                      </button>
+                    </div>
+                  ) : (
+                    /* ── Collapsed: normal choices + small freeform trigger ── */
+                    <>
+                      {choices.map((choice, i) => (
+                        <ChoiceButton
+                          key={choice.id}
+                          index={i}
+                          label={choice.label}
+                          disabled={phase !== "ready"}
+                          vertical={portrait}
+                          onClick={() => onSelectChoice(choice)}
+                        />
+                      ))}
+                      {onFreeformInput && (
+                        <button
+                          type="button"
+                          disabled={phase !== "ready"}
+                          onClick={() => {
+                            setFreeformOpen(true);
+                            requestAnimationFrame(() => freeformInputRef.current?.focus());
+                          }}
+                          className="group shrink-0 flex items-center justify-center transition-all duration-200 disabled:opacity-50 disabled:cursor-wait"
+                          style={{
+                            background: "rgba(20, 14, 8, 0.45)",
+                            border: "1.5px dashed rgba(180, 140, 80, 0.40)",
+                            borderRadius: "6px",
+                            backdropFilter: "blur(8px)",
+                            WebkitBackdropFilter: "blur(8px)",
+                            width: portrait ? "100%" : "42px",
+                            padding: portrait ? "10px 16px" : "0",
+                          }}
+                          title="自由输入"
+                        >
+                          <span
+                            className="opacity-0 group-hover:opacity-100 absolute inset-0 rounded-[5px] transition-opacity duration-200 pointer-events-none"
+                            style={{
+                              background: "rgba(180,140,60,0.08)",
+                              border: "1.5px dashed rgba(200,165,90,0.70)",
+                            }}
+                          />
+                          {portrait ? (
+                            <span className="relative flex items-center gap-2">
+                              <i
+                                className="fa-solid fa-pen-to-square text-[11px]"
+                                style={{ color: "rgba(195,155,75,0.60)" }}
+                              />
+                              <span
+                                className="font-serif text-[13px]"
+                                style={{ color: "rgba(200,185,155,0.70)" }}
+                              >
+                                自由输入
+                              </span>
+                            </span>
+                          ) : (
+                            <i
+                              className="fa-solid fa-pen-to-square text-[12px] relative"
+                              style={{ color: "rgba(195,155,75,0.55)" }}
+                            />
+                          )}
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
@@ -484,7 +605,7 @@ export function PlayCanvas({
                       }`}
                       style={{ color: "rgba(205,165,90,0.92)" }}
                     >
-                      {beat.speaker}
+                      {displaySpeaker(beat.speaker)}
                     </p>
                   )}
 
