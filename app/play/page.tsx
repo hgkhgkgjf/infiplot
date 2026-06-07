@@ -21,6 +21,12 @@ import { SettingsModal, readStoredPlayerName, readStoredVisionClick } from "@/co
 import { annotateClick } from "@/lib/annotateClient";
 import { loadClientTtsConfig } from "@/lib/clientTtsConfig";
 import { PRESETS } from "@/lib/presets";
+import {
+  STORY_SHARE_STORAGE_KEY,
+  createStoryShareDoc,
+  parseStoryShareDoc,
+  storyShareFilename,
+} from "@/lib/storyShare";
 import { provisionVoice, synthesize } from "@infiplot/tts-client";
 import type {
   Beat,
@@ -621,6 +627,9 @@ function PlayInner() {
   const currentSceneRef = useRef<Scene | null>(null);
   const currentBeatRef = useRef<Beat | null>(null);
   const visitedBeatsRef = useRef<string[]>([]);
+  const replaySourceRef = useRef<Session | null>(null);
+  const replayIndexRef = useRef(-1);
+  const replayActiveRef = useRef(false);
   // Original (CDN) URL of the currently-rendered scene image. Used as the key
   // to revoke its blob: URL when the scene swaps. We track the ORIGINAL URL,
   // not the blob URL, because blobUrlCache is keyed by original URL.
@@ -876,6 +885,13 @@ function PlayInner() {
     [prefetchSceneAudio],
   );
 
+  function detachRecordedReplay(): void {
+    replayActiveRef.current = false;
+    replaySourceRef.current = null;
+    replayIndexRef.current = -1;
+    clearPool(poolRef.current);
+  }
+
   // ── Export to interactive gallery (PPT-style replay) ─────────────────
   // Drop all but the (keepCount) most-recent gallery exports from localStorage,
   // ordered by their stored createdAt. Called right before writing a new
@@ -1034,6 +1050,42 @@ function PlayInner() {
     })();
   }, [trimGalleryExports]);
 
+  const handleExportStory = useCallback(() => {
+    const s = sessionRef.current;
+    if (!s || s.history.length === 0) return;
+    const sceneIndex = Math.max(0, s.history.length - 1);
+    const doc = createStoryShareDoc(s, {
+      sceneIndex,
+      beatId: currentBeatRef.current?.id ?? s.history[sceneIndex]?.scene.entryBeatId,
+    });
+    void (async () => {
+      try {
+        const r = await fetch("/api/story-pack", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ docStr: JSON.stringify(doc) }),
+        });
+        if (!r.ok) {
+          const j = (await r.json().catch(() => ({}))) as { error?: string };
+          window.alert(j.error ?? "剧情分享打包失败");
+          return;
+        }
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = storyShareFilename(doc);
+        a.rel = "noopener";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      } catch {
+        window.alert("剧情分享打包失败");
+      }
+    })();
+  }, []);
+
   // ── Presentation mode toggle ─────────────────────────────────────────
   const togglePresentation = useCallback(async () => {
     const entering = !presentation;
@@ -1098,9 +1150,57 @@ function PlayInner() {
     //   ?preset=<id>         → 内置 PRESETS（仍走 /api/start 现场生成）
     //   ?custom=1            → 用户自定义 prompt，sessionStorage 取 ws/sg
     //                          后走 /api/start 现场生成
+    //   ?share=1             → 首页上传的剧情分享 JSON，从第一幕开始本地回放
     const cardName = params.get("card");
     const presetId = params.get("preset");
     const isCustom = params.get("custom") === "1";
+    const isShare = params.get("share") === "1";
+
+    if (isShare) {
+      (async () => {
+        try {
+          const raw = sessionStorage.getItem(STORY_SHARE_STORAGE_KEY);
+          if (!raw) throw new Error("没有找到要载入的剧情文件。");
+          const doc = parseStoryShareDoc(JSON.parse(raw));
+          const imported = doc.session;
+          const first = imported.history[0];
+          if (!first) throw new Error("剧情分享文件没有可载入的剧情。");
+          if (!first.scene.imageUrl) throw new Error("剧情分享文件缺少第一幕图片。");
+
+          const sessionOrientation =
+            first.scene.orientation ?? imported.orientation ?? detectOrientation();
+          setOrientation(sessionOrientation);
+          const blobUrl = await getOrCreateBlobUrl(first.scene.imageUrl);
+          lastImageOriginalUrlRef.current = first.scene.imageUrl;
+
+          const initial: Session = {
+            ...imported,
+            history: [
+              {
+                ...first,
+                visitedBeatIds: [first.scene.entryBeatId],
+                exit: undefined,
+              },
+            ],
+            storyState: first.storyStateAfter ?? imported.storyState,
+            orientation: sessionOrientation,
+          };
+          replaySourceRef.current = imported;
+          replayIndexRef.current = 0;
+          replayActiveRef.current = imported.history.length > 1;
+          visitedBeatsRef.current = [first.scene.entryBeatId];
+          setSession(initial);
+          setCurrentScene(first.scene);
+          setCurrentBeatId(first.scene.entryBeatId);
+          setImageUrl(blobUrl);
+          setPhase("ready");
+          track("scene_reached", { scene_index: 1 });
+        } catch (e) {
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      })();
+      return;
+    }
 
     let livePayload: {
       worldSetting: string;
@@ -1224,6 +1324,7 @@ function PlayInner() {
             {
               scene: data.scene,
               visitedBeatIds: [data.scene.entryBeatId],
+              storyStateAfter: data.storyState,
             },
           ],
           characters: data.characters,
@@ -1250,6 +1351,7 @@ function PlayInner() {
     const s = session;
     const scene = currentScene;
     if (!s || !scene) return;
+    if (isRecordedReplayLockedAt(currentBeat)) return;
 
     const exits = findAllChangeSceneChoices(scene);
     for (const choice of exits) {
@@ -1273,7 +1375,7 @@ function PlayInner() {
         !!byoTtsRef.current,
       );
     }
-  }, [currentScene?.id, session?.id]);
+  }, [currentScene?.id, currentBeat?.id, session?.id]);
 
   // Abort all in-flight speculative prefetches when the page unmounts, so we
   // stop paying for background scene/image generation. Empty deps → fires only
@@ -1346,6 +1448,7 @@ function PlayInner() {
           {
             scene: result.scene,
             visitedBeatIds: [result.scene.entryBeatId],
+            storyStateAfter: result.storyState,
           },
         ],
         characters: mergeCharactersPreserveVoice(
@@ -1373,8 +1476,140 @@ function PlayInner() {
     }
   }
 
+  function tryRecordedSceneTransition(
+    choice: BeatChoice,
+    exit: SceneExit,
+    visitedForCurrent: string[],
+  ): boolean {
+    const source = replaySourceRef.current;
+    const idx = replayIndexRef.current;
+    if (!source || idx < 0 || !isRecordedReplayLockedAt(currentBeatRef.current)) {
+      return false;
+    }
+
+    const recorded = source.history[idx];
+    const next = source.history[idx + 1];
+    if (
+      !recorded ||
+      !next ||
+      recorded.exit?.kind !== "choice" ||
+      recorded.exit.choiceId !== choice.id
+    ) {
+      detachRecordedReplay();
+      return false;
+    }
+
+    void (async () => {
+      setPhase("transitioning");
+      setPendingClick(null);
+      try {
+        if (!next.scene.imageUrl) throw new Error("剧情分享文件缺少下一幕图片。");
+        const blobUrl = await getOrCreateBlobUrl(next.scene.imageUrl);
+        const priorOriginal = lastImageOriginalUrlRef.current;
+        if (priorOriginal && priorOriginal !== next.scene.imageUrl) {
+          revokeBlobUrlFor(priorOriginal);
+        }
+        lastImageOriginalUrlRef.current = next.scene.imageUrl;
+
+        const base = sessionRef.current;
+        if (!base) throw new Error("Session lost mid-replay");
+        const closedHistory = base.history.map((h, i, arr) =>
+          i === arr.length - 1
+            ? { ...h, visitedBeatIds: visitedForCurrent, exit }
+            : h,
+        );
+        const nextIndex = idx + 1;
+        const nextSession: Session = {
+          ...base,
+          history: [
+            ...closedHistory,
+            {
+              ...next,
+              visitedBeatIds: [next.scene.entryBeatId],
+              exit: undefined,
+            },
+          ],
+          characters: source.characters,
+          storyState: next.storyStateAfter ?? base.storyState,
+          orientation: next.scene.orientation ?? base.orientation,
+        };
+        replayIndexRef.current = nextIndex;
+        replayActiveRef.current = true;
+        visitedBeatsRef.current = [next.scene.entryBeatId];
+        setSession(nextSession);
+        setCurrentScene(next.scene);
+        setCurrentBeatId(next.scene.entryBeatId);
+        setImageUrl(blobUrl);
+        setLastExitLabel(choice.label);
+        setPhase("ready");
+        track("scene_reached", { scene_index: nextSession.history.length });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setPhase("ready");
+      }
+    })();
+
+    return true;
+  }
+
+  function recordedAllowedChoiceIds(beat: Beat | null): Set<string> | null {
+    if (!replaySourceRef.current || !beat || beat.next.type !== "choice") return null;
+    const source = replaySourceRef.current;
+    const recorded = source?.history[replayIndexRef.current];
+    if (!recorded) return new Set();
+
+    const visited = recorded.visitedBeatIds;
+    const beatIdx = visited.indexOf(beat.id);
+    if (beatIdx < 0) return null;
+    const nextVisited = beatIdx >= 0 ? visited[beatIdx + 1] : undefined;
+    const allowed = new Set<string>();
+    if (nextVisited) {
+      for (const choice of beat.next.choices) {
+        if (
+          choice.effect.kind === "advance-beat" &&
+          choice.effect.targetBeatId === nextVisited
+        ) {
+          allowed.add(choice.id);
+        }
+      }
+      return allowed;
+    }
+
+    if (
+      beatIdx === visited.length - 1 &&
+      recorded.exit?.kind === "choice" &&
+      source.history[replayIndexRef.current + 1]
+    ) {
+      allowed.add(recorded.exit.choiceId);
+      return allowed;
+    }
+    return null;
+  }
+
+  function isRecordedReplayLockedAt(beat: Beat | null): boolean {
+    if (!replaySourceRef.current || !beat) return false;
+    const recorded = replaySourceRef.current.history[replayIndexRef.current];
+    if (!recorded) return false;
+    const beatIdx = recorded.visitedBeatIds.indexOf(beat.id);
+    if (beatIdx < 0) return false;
+    return Boolean(
+      recorded.visitedBeatIds[beatIdx + 1] ||
+        (
+          beatIdx === recorded.visitedBeatIds.length - 1 &&
+          recorded.exit?.kind === "choice" &&
+          replaySourceRef.current.history[replayIndexRef.current + 1]
+        ),
+    );
+  }
+
+  function isDisabledByRecordedReplay(choice: BeatChoice): boolean {
+    const allowed = recordedAllowedChoiceIds(currentBeatRef.current);
+    return allowed !== null && !allowed.has(choice.id);
+  }
+
   function onSelectChoice(choice: BeatChoice) {
     if (phase !== "ready" || !session || !currentScene) return;
+    if (isDisabledByRecordedReplay(choice)) return;
 
     const beatNext = currentBeatRef.current?.next;
     const choiceIndex =
@@ -1390,6 +1625,23 @@ function PlayInner() {
     }
 
     if (choice.effect.kind === "advance-beat") {
+      if (replayActiveRef.current && currentBeatRef.current) {
+        const source = replaySourceRef.current;
+        const idx = replayIndexRef.current;
+        const recorded = source?.history[idx];
+        const recordedVisited = recorded?.visitedBeatIds ?? [];
+        const beatIdx = recordedVisited.indexOf(currentBeatRef.current.id);
+        const recordedNext = beatIdx >= 0 ? recordedVisited[beatIdx + 1] : undefined;
+        if (recordedNext && recordedNext !== choice.effect.targetBeatId) {
+          detachRecordedReplay();
+        }
+      }
+      if (
+        replaySourceRef.current &&
+        !isRecordedReplayLockedAt(currentBeatRef.current)
+      ) {
+        detachRecordedReplay();
+      }
       // Pure local jump. No network. No pool changes.
       setCurrentBeatId(choice.effect.targetBeatId);
       return;
@@ -1402,6 +1654,9 @@ function PlayInner() {
       label: choice.label,
       nextSceneSeed: choice.effect.nextSceneSeed,
     };
+
+    if (tryRecordedSceneTransition(choice, exit, visited)) return;
+    if (replaySourceRef.current) detachRecordedReplay();
 
     const cached = consumeChoice(poolRef.current, choice.id);
     if (cached) {
@@ -1445,6 +1700,7 @@ function PlayInner() {
 
   async function onFreeformInput(text: string) {
     if (phase !== "ready" || !session || !currentScene) return;
+    if (replayActiveRef.current) detachRecordedReplay();
 
     track("freeform_input", {
       scene_index: session.history.length,
@@ -1576,6 +1832,7 @@ function PlayInner() {
 
   async function onBackgroundClick(click: { x: number; y: number }) {
     if (phase !== "ready" || !session || !currentScene || !imageUrl) return;
+    if (replayActiveRef.current) detachRecordedReplay();
     setPhase("vision-thinking");
     setPendingClick(click);
 
@@ -1720,6 +1977,15 @@ function PlayInner() {
 
   // ── Render ────────────────────────────────────────────────────────────
 
+  const replayAllowedChoiceIds = recordedAllowedChoiceIds(currentBeat);
+  const disabledReplayChoiceIds =
+    replayAllowedChoiceIds && currentBeat?.next.type === "choice"
+      ? currentBeat.next.choices
+          .filter((choice) => !replayAllowedChoiceIds.has(choice.id))
+          .map((choice) => choice.id)
+      : [];
+  const replayLocked = isRecordedReplayLockedAt(currentBeat);
+
   if (error) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center px-8">
@@ -1768,6 +2034,8 @@ function PlayInner() {
           onOpenSettings={() => setSettingsOpen(true)}
           fullViewport
           dialogueHistory={dialogueHistory}
+          disabledChoiceIds={disabledReplayChoiceIds}
+          freeformDisabled={replayLocked}
         />
         {orientation === "portrait" && (
           <div
@@ -1854,6 +2122,8 @@ function PlayInner() {
           visionClickEnabled={visionClickEnabled}
           onOpenSettings={() => setSettingsOpen(true)}
           dialogueHistory={dialogueHistory}
+          disabledChoiceIds={disabledReplayChoiceIds}
+          freeformDisabled={replayLocked}
           aboveCanvas={
             <button
               type="button"
@@ -1868,16 +2138,28 @@ function PlayInner() {
           }
           belowCanvas={
             session && session.history.length > 0 ? (
-              <button
-                type="button"
-                onClick={handleExportGallery}
-                className="text-[10px] smallcaps text-clay-500 hover:text-ember-500 transition-colors flex items-center gap-2"
-                aria-label="导出可交互图集"
-                title="导出本局为可交互图集链接（只会保留最近两次的可交互图集链接）"
-              >
-                <i className="fa-solid fa-link text-[10px]" />
-                导 · 出 · 图 · 集
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleExportGallery}
+                  className="text-[10px] smallcaps text-clay-500 hover:text-ember-500 transition-colors flex items-center gap-2"
+                  aria-label="导出可交互图集"
+                  title="导出本局为可交互图集链接（只会保留最近两次的可交互图集链接）"
+                >
+                  <i className="fa-solid fa-link text-[10px]" />
+                  导 · 出 · 图 · 集
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportStory}
+                  className="text-[10px] smallcaps text-clay-500 hover:text-ember-500 transition-colors flex items-center gap-2"
+                  aria-label="分享当前剧情"
+                  title="导出本局为可继续游玩的剧情 JSON"
+                >
+                  <i className="fa-solid fa-share-nodes text-[10px]" />
+                  分 · 享 · 剧 · 情
+                </button>
+              </>
             ) : null
           }
           aboveCanvasLeft={

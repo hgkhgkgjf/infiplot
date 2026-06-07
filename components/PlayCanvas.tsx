@@ -113,12 +113,14 @@ function ChoiceButton({
   index,
   label,
   disabled,
+  disabledTitle,
   vertical,
   onClick,
 }: {
   index: number;
   label: string;
   disabled: boolean;
+  disabledTitle?: string;
   vertical: boolean;
   onClick: () => void;
 }) {
@@ -126,9 +128,10 @@ function ChoiceButton({
     <button
       type="button"
       disabled={disabled}
+      title={disabledTitle}
       onClick={onClick}
       className={`group relative ${vertical ? "w-full" : "flex-1 min-w-0"} px-4 py-3 text-left transition-all duration-200
-        disabled:opacity-50 disabled:cursor-wait`}
+        disabled:opacity-45 disabled:cursor-not-allowed`}
       style={{
         background: "rgba(20, 14, 8, 0.68)",
         border: "1.5px solid rgba(180, 140, 80, 0.65)",
@@ -184,6 +187,8 @@ export function PlayCanvas({
   aboveCanvasLeft,
   belowCanvas,
   dialogueHistory = [],
+  disabledChoiceIds = [],
+  freeformDisabled = false,
 }: {
   imageUrl: string | null;
   audioSrc: string | null;
@@ -209,6 +214,8 @@ export function PlayCanvas({
   // 渲染在图片正下方、右对齐的 slot（画面外、紧贴右下角），与 aboveCanvas 垂直镜像。
   belowCanvas?: ReactNode;
   dialogueHistory?: DialogueHistoryItem[];
+  disabledChoiceIds?: readonly string[];
+  freeformDisabled?: boolean;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -226,6 +233,7 @@ export function PlayCanvas({
   const choices: BeatChoice[] = isChoiceBeat
     ? (beat!.next as { type: "choice"; choices: BeatChoice[] }).choices
     : [];
+  const disabledChoices = new Set(disabledChoiceIds);
 
   const displayBody = beat?.speaker ? beat.line ?? "" : beat?.narration ?? "";
   const { shown: typedBody, done: typingDone, skip: skipTypewriter } =
@@ -290,7 +298,7 @@ export function PlayCanvas({
       onAdvance();
       return;
     }
-    if (!visionClickEnabled || !imgRef.current) return;
+    if (freeformDisabled || !visionClickEnabled || !imgRef.current) return;
     const el = imgRef.current;
     const rect = el.getBoundingClientRect();
     let x: number;
@@ -328,7 +336,9 @@ export function PlayCanvas({
   const interactive = phase === "ready" && !!imageUrl;
   const imageClickable =
     interactive &&
-    (!typingDone || beat?.next.type === "continue" || visionClickEnabled);
+    (!typingDone ||
+      beat?.next.type === "continue" ||
+      (visionClickEnabled && !freeformDisabled));
   const dimmed = phase === "transitioning";
 
   const portrait = orientation === "portrait";
@@ -511,12 +521,13 @@ export function PlayCanvas({
                           key={choice.id}
                           index={i}
                           label={choice.label}
-                          disabled={phase !== "ready"}
+                          disabled={phase !== "ready" || disabledChoices.has(choice.id)}
+                          disabledTitle={disabledChoices.has(choice.id) ? "分享剧情未包含这条分支" : undefined}
                           vertical={portrait}
                           onClick={() => onSelectChoice(choice)}
                         />
                       ))}
-                      {onFreeformInput && (
+                      {onFreeformInput && !freeformDisabled && (
                         <button
                           type="button"
                           disabled={phase !== "ready"}

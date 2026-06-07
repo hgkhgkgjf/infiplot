@@ -12,6 +12,7 @@ import {
 } from "@/lib/options";
 import { readStoredTtsConfig } from "@/lib/clientTtsConfig";
 import { SettingsModal, readStoredPlayerName, readStoredVisionClick } from "@/components/SettingsModal";
+import { STORY_SHARE_STORAGE_KEY, parseStoryShareDoc } from "@/lib/storyShare";
 
 /* ============================================================================
    InfiPlot · 首页（编辑式视觉风格 · 居中构图，呼应低保真原型）
@@ -1249,6 +1250,8 @@ export default function HomePage() {
   const [customStyleGuide, setCustomStyleGuide] = useState("");
   const [customStyleRefImage, setCustomStyleRefImage] = useState<string>("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const storyImportRef = useRef<HTMLInputElement>(null);
+  const [storyImportError, setStoryImportError] = useState<string | null>(null);
 
   // 顶部使用提示：默认展示，用户可点 × 永久关闭（localStorage:infiplot:hintClosed）。
   const [hintClosed, setHintClosed] = useState(false);
@@ -1396,6 +1399,44 @@ export default function HomePage() {
     router.push("/play?custom=1");
   };
 
+  const handleStoryImport = async (file: File | undefined) => {
+    setStoryImportError(null);
+    if (!file) return;
+    if (file.size <= 0) {
+      setStoryImportError("这个剧情文件是空的。");
+      return;
+    }
+    if (file.size > 12_000_000) {
+      setStoryImportError("剧情文件太大，无法载入。");
+      return;
+    }
+    try {
+      let text: string;
+      if (file.name.toLowerCase().endsWith(".json") || file.type === "application/json") {
+        text = await file.text();
+      } else {
+        const r = await fetch("/api/story-unpack", {
+          method: "POST",
+          body: await file.arrayBuffer(),
+        });
+        if (!r.ok) {
+          const j = (await r.json().catch(() => ({}))) as { error?: string };
+          throw new Error(j.error ?? "剧情文件解包失败。");
+        }
+        const j = (await r.json()) as { docStr?: unknown };
+        if (typeof j.docStr !== "string") throw new Error("剧情文件解包失败。");
+        text = j.docStr;
+      }
+      const doc = parseStoryShareDoc(JSON.parse(text));
+      window.sessionStorage.setItem(STORY_SHARE_STORAGE_KEY, JSON.stringify(doc));
+      router.push("/play?share=1");
+    } catch (e) {
+      setStoryImportError(e instanceof Error ? e.message : "剧情文件解析失败。");
+    } finally {
+      if (storyImportRef.current) storyImportRef.current.value = "";
+    }
+  };
+
   const stories = STORIES[galleryGender];
   const imgPrefix = galleryGender === "女性向" ? "f" : "m";
   const analyticsOn = Boolean(
@@ -1510,6 +1551,28 @@ export default function HomePage() {
                 开始
                 <i className="fa-solid fa-arrow-right text-xs" />
               </button>
+            </div>
+            <div className="mt-4 flex flex-col items-center gap-2">
+              <input
+                ref={storyImportRef}
+                type="file"
+                accept=".infiplot,application/octet-stream,.json,application/json"
+                className="hidden"
+                onChange={(e) => void handleStoryImport(e.target.files?.[0])}
+              />
+              <button
+                type="button"
+                onClick={() => storyImportRef.current?.click()}
+                className="inline-flex items-center gap-2 text-[10px] smallcaps text-clay-500 transition-colors hover:text-ember-500"
+              >
+                <i className="fa-solid fa-file-import text-[10px]" />
+                载 · 入 · 剧 · 情
+              </button>
+              {storyImportError && (
+                <p className="max-w-[520px] text-center text-xs leading-relaxed text-ember-500">
+                  {storyImportError}
+                </p>
+              )}
             </div>
             {prompt && (
               <p className="mt-2 text-right text-xs text-clay-400">

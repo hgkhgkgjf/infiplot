@@ -50,6 +50,8 @@ At session start, `startSession()` runs Architect first to create `storyState`; 
 
 `Scene` is an image plus a graph of `Beat` nodes. `Beat.next` is either `continue` or `choice`. A scene should have at least one meaningful `change-scene` exit toward a new scene. Beat ids are graph keys; keep them unique and repair references when coercing LLM output.
 
+`SceneHistoryEntry.storyStateAfter` snapshots the story memory after each scene is generated. Keep it when exporting/importing playable story JSON or replaying shared sessions so continuing from a replayed prefix uses the right narrative context.
+
 `StoryState` has stable and volatile zones. Stable fields are set by Architect and must not be patched by Writer: `logline`, `genreTags`, `protagonist`, `castNotes`. Volatile fields may be rewritten every scene: `synopsis`, `openThreads`, `relationships`, `nextHook`. If adding a field, classify it and update `applyStoryStatePatch()` plus Writer coercion.
 
 Characters are identified by `name`. `mergeCharacters()` preserves existing portrait and voice fields when a later design omits them. Do not casually change character matching without checking Writer, Director, and Painter reference handling.
@@ -91,6 +93,7 @@ Common routes live under `app/api/`:
 - `POST /api/insert-beat`: creates a transient beat without image generation.
 - `POST /api/beat-audio`: lazy TTS for a displayed beat; returns binary audio, or `204` when silent.
 - `POST /api/parse-style-image`: extracts a style prompt from uploaded reference art.
+- `POST /api/story-pack` / `POST /api/story-unpack`: stateless AES-GCM packing/unpacking for playable story share `.infiplot` files; uses `GALLERY_SECRET`.
 
 When changing public types or route payloads, update all route callers and client consumers in the same change.
 
@@ -139,6 +142,7 @@ Use `.env.example` as the source of truth. Never commit `.env.local`, API keys, 
 - `MOCK_IMAGE=true` skips image generation and returns a placeholder for cheap local iteration.
 - `NEXT_PUBLIC_IMAGE_PROXY_URL` and `NEXT_PUBLIC_IMAGE_PROXY_ALLOWED_HOSTS` opt into browser-side image proxying for allowed hosts.
 - Analytics uses optional Umami `NEXT_PUBLIC_UMAMI_*` values and must stay content-free/privacy-preserving.
+- `GALLERY_SECRET` enables encrypted `.infiplot` share files for gallery and playable story export/import.
 - `NEXT_PUBLIC_*` values are inlined at build time.
 
 ## File Dependency Map

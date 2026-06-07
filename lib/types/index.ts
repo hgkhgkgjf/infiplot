@@ -113,6 +113,10 @@ export type SceneHistoryEntry = {
   scene: Scene;
   visitedBeatIds: string[];
   exit?: SceneExit;
+  /** Story memory immediately after this scene was generated. Used by imported
+   *  story replays so continuing from an earlier shared scene preserves the
+   *  right narrative context instead of jumping to the export-time final state. */
+  storyStateAfter?: StoryState;
 };
 
 // ──────────────────────────────────────────────────────────────────────
