@@ -630,6 +630,7 @@ function PlayInner() {
   const replaySourceRef = useRef<Session | null>(null);
   const replayIndexRef = useRef(-1);
   const replayActiveRef = useRef(false);
+  const exportingStoryRef = useRef(false);
   // Original (CDN) URL of the currently-rendered scene image. Used as the key
   // to revoke its blob: URL when the scene swaps. We track the ORIGINAL URL,
   // not the blob URL, because blobUrlCache is keyed by original URL.
@@ -1052,7 +1053,8 @@ function PlayInner() {
 
   const handleExportStory = useCallback(() => {
     const s = sessionRef.current;
-    if (!s || s.history.length === 0) return;
+    if (!s || s.history.length === 0 || exportingStoryRef.current) return;
+    exportingStoryRef.current = true;
     const sceneIndex = Math.max(0, s.history.length - 1);
     const doc = createStoryShareDoc(s, {
       sceneIndex,
@@ -1082,6 +1084,8 @@ function PlayInner() {
         setTimeout(() => URL.revokeObjectURL(url), 2000);
       } catch {
         window.alert("剧情分享打包失败");
+      } finally {
+        exportingStoryRef.current = false;
       }
     })();
   }, []);
