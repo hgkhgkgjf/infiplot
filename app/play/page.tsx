@@ -525,7 +525,7 @@ async function resolveByoVoice(
     return ready;
   }
   if (!speaker.voiceDescription) return null;
-  const p = provisionVoice(cfg, speaker.voiceDescription);
+  const p = provisionVoice(cfg, speaker.voiceDescription, speaker.name);
   cache.set(speaker.name, p);
   try {
     return await p;

@@ -103,7 +103,7 @@ export async function provisionCharacterVoice(
 ): Promise<CharacterVoice | undefined> {
   if (!config.tts) return undefined;
   try {
-    return await provisionVoice(config.tts, voiceDescription);
+    return await provisionVoice(config.tts, voiceDescription, charName);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[characterDesigner] voice provision failed for ${charName}: ${msg}`);
