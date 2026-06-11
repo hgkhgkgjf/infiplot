@@ -12,6 +12,10 @@ import {
 } from "@/lib/options";
 import { readStoredTtsConfig } from "@/lib/clientTtsConfig";
 import { SettingsModal, readStoredPlayerName, readStoredVisionClick } from "@/components/SettingsModal";
+import { ModelSettingsModal } from "@/components/ModelSettingsModal";
+import { analyzeImageDataUrl } from "@infiplot/ai-client";
+import { readStoredModelConfig, resolveEngineConfig } from "@/lib/clientModelConfig";
+import { STYLE_EXTRACTION_PROMPT } from "@/lib/styleExtraction";
 import { STORY_SHARE_STORAGE_KEY, parseStoryShareDoc } from "@/lib/storyShare";
 
 /* ============================================================================
@@ -976,17 +980,21 @@ function StyleModal({
     setParsing(true);
     try {
       const resized = await resizeImageToDataUrl(file);
-      const res = await fetch("/api/parse-style-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageDataUrl: resized }),
-      });
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? `${res.status}`);
+      const modelCfg = readStoredModelConfig();
+      if (!modelCfg) {
+        throw new Error("请先点击首页右上角的「模型设置」配置视觉模型参数");
       }
-      const data = (await res.json()) as { stylePrompt: string };
-      setDraft(data.stylePrompt);
+      const config = resolveEngineConfig(modelCfg, null);
+      const raw = await analyzeImageDataUrl(config.vision, resized, STYLE_EXTRACTION_PROMPT);
+      let parsed: { stylePrompt?: string };
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        parsed = { stylePrompt: raw };
+      }
+      const stylePrompt = (parsed.stylePrompt ?? "").trim();
+      if (!stylePrompt) throw new Error("视觉模型返回了空的风格描述");
+      setDraft(stylePrompt);
       setCustomStyleRefImage(resized);
       track("style_image_upload", { ok: true });
     } catch (err) {
@@ -1258,6 +1266,7 @@ export default function HomePage() {
 
   // 统一设置弹窗（名字 + 识图 + TTS Key）：可选增强，数据只存浏览器。
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [modelSettingsOpen, setModelSettingsOpen] = useState(false);
   const [ttsConfigured, setTtsConfigured] = useState(false);
   const [playerName, setPlayerName] = useState("");
   const [visionClickEnabled, setVisionClickEnabled] = useState(true);
@@ -1475,6 +1484,15 @@ export default function HomePage() {
           Infi<em className="italic font-light text-ember-500">Plot</em>
         </span>
         <div className="flex items-center gap-5">
+          <button
+            type="button"
+            onClick={() => setModelSettingsOpen(true)}
+            aria-label="模型设置"
+            title="模型设置"
+            className="text-base text-clay-500 hover:text-ember-500 transition-colors"
+          >
+            <i className="fa-solid fa-sliders" />
+          </button>
           <button
             type="button"
             onClick={() => setSettingsOpen(true)}
@@ -1787,6 +1805,12 @@ export default function HomePage() {
                 setSel((s) => s.map((v, j) => (j === voiceRow ? onIdx : v)));
             }
           }}
+        />
+      )}
+      {modelSettingsOpen && (
+        <ModelSettingsModal
+          onClose={() => setModelSettingsOpen(false)}
+          onSaved={() => setModelSettingsOpen(false)}
         />
       )}
     </div>
