@@ -54,8 +54,6 @@ const PROVIDER_OPTIONS: { value: ProviderProtocol | ""; label: string }[] = [
   { value: "", label: "自动推断（推荐）" },
   { value: "openai_compatible", label: "OpenAI Compatible" },
   { value: "openai", label: "OpenAI (Native)" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "google", label: "Google Gemini" },
   { value: "runware", label: "Runware" },
 ];
 

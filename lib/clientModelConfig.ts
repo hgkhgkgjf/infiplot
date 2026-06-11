@@ -10,8 +10,6 @@ const STORAGE_KEY = "infiplot:model";
 
 const VALID_PROTOCOLS: ProviderProtocol[] = [
   "openai_compatible",
-  "anthropic",
-  "google",
   "openai",
   "runware",
 ];
