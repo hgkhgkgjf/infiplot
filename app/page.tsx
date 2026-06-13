@@ -16,6 +16,10 @@ import { analyzeImageDataUrl } from "@infiplot/ai-client";
 import { readStoredModelConfig, resolveEngineConfig } from "@/lib/clientModelConfig";
 import { STYLE_EXTRACTION_PROMPT } from "@/lib/styleExtraction";
 import { STORY_SHARE_STORAGE_KEY, parseStoryShareDoc } from "@/lib/storyShare";
+import { AUTH_ENABLED } from "@/lib/supabase/config";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { AuthModal } from "@/components/AuthModal";
+import { UserChip } from "@/components/UserChip";
 
 /* ============================================================================
    InfiPlot · 首页（编辑式视觉风格 · 居中构图，呼应低保真原型）
@@ -1281,6 +1285,8 @@ export default function HomePage() {
   const [ttsConfigured, setTtsConfigured] = useState(false);
   const [playerName, setPlayerName] = useState("");
   const [visionClickEnabled, setVisionClickEnabled] = useState(true);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"start" | null>(null);
 
   const styleRow = OPTS.findIndex((o) => o.modal);
   const voiceRow = OPTS.findIndex((o) => o.label === "语音配音");
@@ -1350,7 +1356,17 @@ export default function HomePage() {
     }
   };
 
-  const start = () => {
+  const start = async () => {
+    if (AUTH_ENABLED) {
+      const sb = createSupabaseClient();
+      const { data } = await sb.auth.getUser();
+      if (!data.user) {
+        setPendingAction("start");
+        setAuthModalOpen(true);
+        return;
+      }
+    }
+
     // 空输入时落回 Typewriter 当前闪动的示例——用户看到啥就玩啥，
     // 不会再出现「点开始 → 剧情和占位文字毫无关系」的体验断层。
     const userPrompt =
@@ -1525,6 +1541,7 @@ export default function HomePage() {
           >
             <i className="fa-brands fa-x-twitter" />
           </a>
+          <UserChip onLoginClick={() => setAuthModalOpen(true)} />
         </div>
       </header>
 
@@ -1809,6 +1826,21 @@ export default function HomePage() {
               const onIdx = OPTS[voiceRow]!.items.indexOf("开启");
               if (onIdx >= 0)
                 setSel((s) => s.map((v, j) => (j === voiceRow ? onIdx : v)));
+            }
+          }}
+        />
+      )}
+      {authModalOpen && (
+        <AuthModal
+          onClose={() => {
+            setAuthModalOpen(false);
+            setPendingAction(null);
+          }}
+          onSuccess={() => {
+            setAuthModalOpen(false);
+            if (pendingAction === "start") {
+              setPendingAction(null);
+              start();
             }
           }}
         />
