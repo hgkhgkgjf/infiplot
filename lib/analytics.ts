@@ -54,6 +54,20 @@ type AnalyticsEventData = {
   fullscreen_toggle: { on: boolean };
   play_heartbeat: never;
   gallery_export: { scene_count: number; audio_count: number };
+  play_error: {
+    source: "scene" | "start" | "vision" | "insert_beat" | "freeform" | "prefetch";
+    kind: "network" | "timeout" | "http_5xx" | "http_4xx" | "abort" | "unknown";
+    http_status: number;
+    orientation: "portrait" | "landscape";
+    connection: "4g" | "3g" | "2g" | "slow-2g" | "unknown";
+    was_hidden: boolean;
+    scene_index: number;
+    elapsed_bucket: "<5s" | "5-30s" | "30-60s" | "60-120s" | "120s+";
+  };
+  play_visibility_lost: {
+    phase: "loading-first" | "ready" | "transitioning" | "vision-thinking" | "inserting-beat";
+    had_pending_fetch: boolean;
+  };
 };
 
 export type AnalyticsEvent = keyof AnalyticsEventData;
