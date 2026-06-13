@@ -375,7 +375,7 @@ function prefetchScenePath(
   const prefetchT0 = Date.now();
   const promise = (async () => {
     const data = await requestScene({ session: specSession, clientTts });
-    if (abort.signal.aborted) throw new Error("aborted");
+    if (abort.signal.aborted) throw new DOMException("aborted", "AbortError");
 
     // Record this resolved alternate for the gallery export. Key is
     // (parent scene id at the choice point) : (choice id). Includes the
