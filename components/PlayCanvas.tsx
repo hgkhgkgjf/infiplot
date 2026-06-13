@@ -413,7 +413,8 @@ export function PlayCanvas({
               if (!onImageReady) return;
               const el = imgRef.current;
               if (!el) { onImageReady(); return; }
-              el.decode().then(onImageReady, onImageReady);
+              const notify = () => { if (imgRef.current === el) onImageReady(); };
+              el.decode().then(notify, notify);
             }}
             className={`block select-none animate-fade-in transition-opacity duration-700 ease-out ${
               imageClickable ? "cursor-pointer" : interactive ? "cursor-default" : "cursor-wait"
