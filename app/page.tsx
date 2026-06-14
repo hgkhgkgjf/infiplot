@@ -1742,7 +1742,7 @@ export default function HomePage() {
               >
                 <i className="fa-solid fa-file-import text-sm" />
                 <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-clay-900 px-2 py-1 font-sans text-[11px] text-cream-50 opacity-0 transition-opacity group-hover:opacity-100">
-                  载入infiplot剧情
+                  载入剧情
                 </span>
               </button>
             </div>
@@ -1846,7 +1846,7 @@ export default function HomePage() {
           <div>
             <p className="text-[10px] smallcaps text-clay-500 mb-3">团 队</p>
             <p className="font-serif italic text-clay-700 text-base leading-relaxed">
-              我们来自清华大学、兰州大学、西安交通大学等高校，希望探索多模态模型在「直接生成图片、视频」这类 <span className="not-italic">one-shot</span> 能力之外，更多的可能性。本项目目前仍处于早期阶段，我们还在招募成员，如果你也感兴趣，欢迎联系我们，期待你的加入。
+              我们来自清华大学、兰州大学等高校，希望探索多模态模型在「直接生成图片、视频」这类 <span className="not-italic">oneshot</span> 能力之外，更多的可能性。本项目目前仍处于早期阶段，我们还在招募成员，如果你也感兴趣，欢迎联系我们，期待你的加入。
             </p>
           </div>
 
@@ -1888,7 +1888,7 @@ export default function HomePage() {
             <p className="text-[10px] smallcaps text-clay-500 mb-3">内 测 用 户 群</p>
             <img
               src="/qq-group.webp"
-              alt="InfiPlot 内测交流群 QQ 群二维码（群号 575404333）"
+              alt="InfiPlot 公测交流群 QQ 群二维码（群号 575404333）"
               width={760}
               height={760}
               loading="lazy"
@@ -1903,9 +1903,9 @@ export default function HomePage() {
 
         <div className="hairline-full w-full mt-14 md:mt-20 mb-12 md:mb-16" />
         <p className="mx-auto max-w-3xl text-center font-sans text-xs md:text-[13px] leading-[1.85] text-clay-500">
-          内测期间本产品可免费使用，但稳定性可能会随并发用户数量而有波动。寻找算力赞助商ing，欢迎联系^-^
+          公测期间本产品可免费使用，但稳定性可能会随并发用户数量而有波动。
           <br />
-          目前，内测期间生成的内容不会被保存，如有需要，请通过录屏或截图等方式保存游玩体验，并记录下生成故事时的提示词与风格选项等。
+          公测期间生成的内容不会在服务器上保存。如需留存，请在游玩结束后使用导出图集或分享剧情功能保存您的游玩体验。
           <br />
           AI 生成的内容不代表本团队立场。
           {analyticsOn && (
@@ -1928,8 +1928,13 @@ export default function HomePage() {
 
       <footer className="mx-auto w-full max-w-[1640px] px-6 md:px-16 pb-10 mt-auto">
         <div className="hairline-full w-full mb-5" />
-        <div className="flex flex-col items-center text-[10px] smallcaps text-clay-500">
+        <div className="flex flex-col items-center gap-2 text-[10px] smallcaps text-clay-500">
           <span>© 2026 InfiPlot. All rights reserved.</span>
+          <span className="flex items-center gap-3 normal-case tracking-normal text-[11px]">
+            <a href="/privacy" className="hover:text-ember-500 transition-colors">隐私政策</a>
+            <span className="text-clay-300">·</span>
+            <a href="/terms" className="hover:text-ember-500 transition-colors">服务条款</a>
+          </span>
         </div>
       </footer>
 

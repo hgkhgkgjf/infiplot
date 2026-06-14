@@ -132,7 +132,7 @@ docker compose up -d
 
 ## 团队与愿景
 
-我们是一群来自清华大学、兰州大学、西安交通大学等高校的年轻人。
+我们是一群来自清华大学、兰州大学等高校的年轻人。
 
 一方面，我们本来就是galgame、乙女游戏、FMV、AI角色扮演游戏这类游戏的深度用户，在享受游戏体验的同时，也会想象如果能选择不被预设的剧情选项，或者和对话的AI角色深度互动而不只是通过聊天软件聊天，该是多么愉快刺激的体验。
 
@@ -145,9 +145,9 @@ docker compose up -d
 
 联系方式：hi@infiplot.com
 
-欢迎扫码加入 **InfiPlot 内测交流群**（QQ 群号 `575404333`），一起反馈体验、参与共建：
+欢迎扫码加入 **InfiPlot 公测交流群**（QQ 群号 `575404333`），一起反馈体验、参与共建：
 
-<img src="public/qq-group.webp" alt="InfiPlot 内测交流群 QQ 二维码" width="200" />
+<img src="public/qq-group.webp" alt="InfiPlot 公测交流群 QQ 二维码" width="200" />
 
 ---
 
