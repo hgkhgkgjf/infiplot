@@ -1787,10 +1787,10 @@ export default function HomePage() {
           {!hintClosed && (
             <div className="relative mx-auto mt-10 md:mt-12 max-w-[640px] rounded-sm border border-clay-900/10 bg-cream-100/50 px-8 py-3.5">
               <p className="font-serif text-[13px] md:text-sm leading-relaxed text-clay-500">
-                输入你的想象、配置风格，点击「开始」即可游玩；也可以从下方的精选故事集，挑一篇快速体验{" "}
+                输入想法、配置风格，点击「开始」即可游玩{AUTH_ENABLED && "（测试期间，登录即可免费畅玩）"}；也可以从下方精选故事集挑一篇快速体验{" "}
                 <em className="not-italic text-ember-500">InfiPlot</em>。
-                点击「<span className="inline-flex items-center gap-1 text-ember-500"><i className="fa-solid fa-gear text-[10px]" />设置</span>」可以配置你的名字和配音
-                API Key，让角色以你的名字称呼你，配音体验也更稳定。
+                点击「<span className="inline-flex items-center gap-1 text-ember-500"><i className="fa-solid fa-gear text-[10px]" />设置</span>」还能填入你的名字，以及你自己的文本、绘图、识图模型和配音
+                Key——全部只存在本地浏览器，体验更稳定。
               </p>
               <button
                 type="button"

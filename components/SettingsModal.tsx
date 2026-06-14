@@ -402,6 +402,15 @@ export function SettingsModal({
 
           {activeTab === "models" && (
             <>
+              <div className="px-6 md:px-8 py-4">
+                <p className="text-[11px] leading-relaxed text-clay-400">
+                  <i className="fa-solid fa-circle-info mr-1.5" />
+                  请确保你的 API 端点支持浏览器跨域请求（CORS）。大多数主流提供商（OpenAI、Anthropic、Gemini、Runware 等）已默认支持。
+                </p>
+              </div>
+
+              <div className="border-t border-clay-900/8 mx-6 md:mx-8" />
+
               {groups.map((g, idx) => (
                 <div key={g.key}>
                   {idx > 0 && (
@@ -419,7 +428,7 @@ export function SettingsModal({
 
                     <div className="flex flex-col gap-2">
                       <span className="text-[10px] smallcaps text-clay-500">
-                        B A S E · U R L
+                        BASE URL
                       </span>
                       <input
                         value={g.baseUrl}
@@ -434,7 +443,7 @@ export function SettingsModal({
 
                     <div className="flex flex-col gap-2">
                       <span className="text-[10px] smallcaps text-clay-500">
-                        A P I · K e y
+                        API Key
                       </span>
                       <div className="relative">
                         <input
@@ -466,7 +475,7 @@ export function SettingsModal({
 
                     <div className="flex flex-col gap-2">
                       <span className="text-[10px] smallcaps text-clay-500">
-                        M o d e l
+                        Model
                       </span>
                       <input
                         value={g.model}
@@ -481,7 +490,7 @@ export function SettingsModal({
 
                     <div className="flex flex-col gap-2">
                       <span className="text-[10px] smallcaps text-clay-500">
-                        P r o v i d e r（可选）
+                        Provider（可选）
                       </span>
                       <select
                         value={g.provider}
@@ -508,12 +517,11 @@ export function SettingsModal({
               <div className="flex flex-col gap-3 px-6 md:px-8 pt-5 pb-5">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-7 w-7 items-center justify-center rounded-sm border border-clay-900/10 bg-cream-100 text-clay-400">
-                    <i className="fa-solid fa-key text-[11px]" />
+                    <i className="fa-solid fa-volume-high text-[11px]" />
                   </span>
                   <span className="font-serif text-base text-clay-900">
-                    自带配音 Key
+                    配音模型
                   </span>
-                  <span className="text-[10px] text-clay-400">可选</span>
                 </div>
                 <p className="text-[12px] leading-relaxed text-clay-500">
                   填入你自己的
@@ -526,7 +534,7 @@ export function SettingsModal({
 
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] smallcaps text-clay-500">
-                    K e y · 类 型
+                    Key 类型
                   </span>
                   <div className="grid grid-cols-2 gap-2">
                     {(
@@ -569,7 +577,7 @@ export function SettingsModal({
                 {keyType === "token-plan" && (
                   <div className="flex flex-col gap-2">
                     <span className="text-[10px] smallcaps text-clay-500">
-                      区 域 节 点
+                      区域节点
                     </span>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                       {TTS_REGION_PRESETS.map((p) => {
@@ -599,7 +607,7 @@ export function SettingsModal({
 
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] smallcaps text-clay-500">
-                    A P I · K e y
+                    API Key
                   </span>
                   <div className="relative">
                     <input
@@ -646,15 +654,6 @@ export function SettingsModal({
                     如何免费申请 Key？查看图文教程
                   </a>
                 </div>
-              </div>
-
-              <div className="border-t border-clay-900/8 mx-6 md:mx-8" />
-
-              <div className="px-6 md:px-8 py-4">
-                <p className="text-[11px] leading-relaxed text-clay-400">
-                  <i className="fa-solid fa-circle-info mr-1.5" />
-                  请确保你的 API 端点支持浏览器跨域请求（CORS）。大多数主流提供商（OpenAI、Anthropic、Gemini、Runware 等）已默认支持。
-                </p>
               </div>
             </>
           )}
