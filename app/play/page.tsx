@@ -57,6 +57,11 @@ import { UserChip } from "@/components/UserChip";
 
 const MUTED_STORAGE_KEY = "infiplot:muted";
 
+// Consecutive silent (no-audio) beats before we surface the BYO-key nudge to a
+// non-BYO, unmuted player. Set high enough that one transient miss won't trip
+// it, low enough to catch a scene that's clearly being rate-limited.
+const SILENCE_NUDGE_THRESHOLD = 3;
+
 // Mobile-portrait users get a 9:16 scene image painted for them; everyone else
 // (desktop, tablet, mobile-landscape) keeps the 16:9 landscape image. Only a
 // touch device (coarse pointer) held upright counts as "portrait" — a mouse
@@ -603,6 +608,12 @@ function PlayInner() {
   const [orientation, setOrientation] = useState<Orientation>("landscape");
   const [lastExitLabel, setLastExitLabel] = useState<string | null>(null);
   // Consecutive server-side TTS misses (null audio / failed /api/beat-audio).
+  // Climbs when the shared server key is rate-limited by MiMo — the exact pain
+  // BYO fixes — so the play page can nudge non-BYO users to add their own key.
+  // Reset to 0 on any successful synth. Only the server path touches it.
+  const [silenceStrikes, setSilenceStrikes] = useState(0);
+  // Once the player dismisses the silence nudge, keep it gone for this session.
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [visionClickEnabled, setVisionClickEnabled] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -855,8 +866,39 @@ function PlayInner() {
           );
           audioUrl = `data:${out.mimeType};base64,${out.audioBase64}`;
         } else {
-          // No TTS configured — silent.
-          return;
+          // Server-side synth: POST just this beat + the speaker's voice (not
+          // the whole session) to /api/beat-audio. Returns 204 when the engine
+          // had nothing to say (no TTS configured / empty synth) and binary
+          // audio otherwise. Both 204 and !ok count as a silence strike so the
+          // nudge surfaces when the shared server key is being rate-limited.
+          const res = await fetch("/api/beat-audio", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              beat: { id: beat.id, line: beat.line, lineDelivery: beat.lineDelivery },
+              voice: speaker.voice,
+            }),
+            signal: abort.signal,
+          });
+          if (res.status === 204) {
+            setSilenceStrikes((n) => Math.min(n + 1, 99));
+            return;
+          }
+          if (!res.ok) {
+            setSilenceStrikes((n) => Math.min(n + 1, 99));
+            return;
+          }
+          const blob = await res.blob();
+          // Defensive: a 200 with an empty body (proxy/CDN truncation,
+          // framework edge cases) would create a silent blob URL and wrongly
+          // reset the silence counter. Treat empty as a miss so the nudge
+          // still surfaces when the shared key is being rate-limited.
+          if (blob.size === 0) {
+            setSilenceStrikes((n) => Math.min(n + 1, 99));
+            return;
+          }
+          audioUrl = URL.createObjectURL(blob);
+          setSilenceStrikes(0);
         }
         // Skip the state write if we've been aborted between the await and
         // here — beat ids are scene-local, so a late arrival from a prior
@@ -864,9 +906,23 @@ function PlayInner() {
         // same id.
         if (audioUrl && !abort.signal.aborted) {
           setBeatAudioMap((m) => ({ ...m, [beat.id]: audioUrl }));
+        } else if (audioUrl?.startsWith("blob:")) {
+          // Aborted between synth and store — revoke the blob URL we just
+          // created so it doesn't leak. (Scene-change and mute transitions
+          // revoke stored URLs separately; this only covers this race.)
+          URL.revokeObjectURL(audioUrl);
         }
       } catch {
-        // aborted / network / Xiaomi rate-limit — silent fallback (no audio)
+        // aborted (scene change / mute) — silent fallback, NOT a strike.
+        // Network failure / server 5xx / shared-key rate-limit that surfaces
+        // as a thrown error on the server path DOES count — otherwise the
+        // silence nudge would never fire for those cases (the explicit 204/
+        // !ok/empty-blob branches above only cover responses, not throws).
+        // BYO throws are the user's own key quota, not the shared-key pain
+        // the nudge addresses, so they don't count.
+        if (!abort.signal.aborted && !byo) {
+          setSilenceStrikes((n) => Math.min(n + 1, 99));
+        }
       } finally {
         // Only clear the slot if it's still ours. An aborted prior fetch
         // running its finally late could otherwise delete the controller of a
@@ -956,8 +1012,27 @@ function PlayInner() {
       setVisionClickEnabled(settings.visionClickEnabled);
       const nextPlayerName = settings.playerName || undefined;
       setSession((prev) => prev ? { ...prev, playerName: nextPlayerName } : prev);
+      // Refresh the BYO TTS config so a key entered mid-session takes effect
+      // immediately — byoTtsRef is otherwise only read once at mount.
+      const cfg = settings.ttsConfigured ? loadClientTtsConfig() : null;
+      byoTtsRef.current = cfg;
+      setByoTtsConfig(cfg);
+      if (cfg) {
+        // Switching to BYO: any server-path audio in flight is now stale,
+        // and the silence nudge is no longer relevant. Abort + clear, then
+        // re-synth the current scene with the user's own key.
+        setSilenceStrikes(0);
+        cancelBeatAudioFetches();
+        setBeatAudioMap((prev) => {
+          for (const url of Object.values(prev)) {
+            if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+          }
+          return {};
+        });
+        prefetchSceneAudio();
+      }
     },
-    [],
+    [prefetchSceneAudio],
   );
 
   function detachRecordedReplay(): void {
@@ -2185,6 +2260,16 @@ function PlayInner() {
   const sceneCount = session?.history.length ?? 0;
   const beatCount = visitedBeatsRef.current.length;
 
+  // Surface the BYO-key nudge only to an unmuted, non-BYO player whose last few
+  // beats came back silent (shared key rate-limited) — the exact pain BYO fixes.
+  // Dismissible for the session.
+  const showSilenceNudge =
+    phase === "ready" &&
+    !muted &&
+    !byoTtsConfig &&
+    !nudgeDismissed &&
+    silenceStrikes >= SILENCE_NUDGE_THRESHOLD;
+
   return (
     <div className="min-h-screen flex flex-col">
       {exportProgress && (
@@ -2294,6 +2379,35 @@ function PlayInner() {
                 />
                 {muted ? "静 · 音" : "有 · 声"}
               </button>
+
+              {/* Silence nudge — a compact pill right beside the mute toggle.
+                  Triggers when the shared server key keeps coming back silent,
+                  which usually means it's rate-limited; nudges the player to
+                  enter their own API Key for a more stable experience.
+                  Clicking opens the settings modal in place; the × dismisses
+                  it for the session. */}
+              {showSilenceNudge && (
+                <span className="flex items-center gap-1 animate-fade-in">
+                  <button
+                    type="button"
+                    onClick={() => setSettingsOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-ember-500/40 bg-ember-500/10 px-2.5 py-1 text-[10px] text-ember-500 hover:bg-ember-500/20 transition-colors"
+                    title="效果不满意/经常没声音？填入自己的 API Key 试试"
+                  >
+                    <i className="fa-solid fa-volume-xmark text-[9px]" />
+                    效果不满意/经常没声音？填入自己的 API Key 试试
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNudgeDismissed(true)}
+                    aria-label="关闭提示"
+                    title="关闭"
+                    className="text-clay-400 hover:text-clay-700 transition-colors"
+                  >
+                    <i className="fa-solid fa-xmark text-[10px]" />
+                  </button>
+                </span>
+              )}
             </>
           }
         />
