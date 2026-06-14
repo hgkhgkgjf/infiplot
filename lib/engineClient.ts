@@ -11,6 +11,7 @@ import {
 } from "@/lib/clientModelConfig";
 import { loadClientTtsConfig } from "@/lib/clientTtsConfig";
 import type {
+  Character,
   FreeformClassifyRequest,
   FreeformClassifyResponse,
   EngineConfig,
@@ -18,6 +19,7 @@ import type {
   InsertBeatResponse,
   SceneRequest,
   SceneResponse,
+  Session,
   StartRequest,
   StartResponse,
   VisionRequest,
@@ -58,6 +60,39 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// ── FOT reduction helpers (server-fallback path only) ─────────────────
+// The server-fallback POSTs send the whole Session over the wire. Voice
+// data is bulky (~160KB/character via referenceAudioBase64) and the
+// scene-generation / vision / classify pipelines never need it — voices
+// are only consumed by /api/beat-audio, which receives them directly, not
+// via the session. So strip voices before transport.
+function stripVoicesForTransport(session: Session): Session {
+  return {
+    ...session,
+    // Destructure voice out so the serialized payload drops the field
+    // entirely (voice is optional on Character), rather than serializing
+    // it as undefined/null. This is the ~160KB/character referenceAudioBase64
+    // we want off the wire on the server-fallback path.
+    characters: session.characters.map(({ voice: _voice, ...rest }) => rest),
+  };
+}
+
+// The server strips voice from already-known characters before responding
+// (see /api/scene stripKnownVoices and /api/insert-beat's blanket strip) to
+// save bandwidth, so only NEW characters carry voice in the response. For
+// existing characters, re-attach the voice the client already holds locally.
+function mergeCharactersPreserveVoice(
+  local: Character[],
+  remote: Character[],
+): Character[] {
+  const localByName = new Map(local.map((c) => [c.name, c]));
+  return remote.map((c) => {
+    const prev = localByName.get(c.name);
+    if (!prev) return c;
+    return { ...c, voice: c.voice ?? prev.voice };
+  });
+}
+
 // ── Unified entry points ───────────────────────────────────────────────
 // When the browser has a BYO model config in localStorage, these call the
 // client-side engine directly (talking to providers from the browser).
@@ -77,7 +112,14 @@ export async function requestScene(req: SceneRequest): Promise<SceneResponse> {
   if (config) {
     return requestSceneClient(config, req);
   }
-  return postJson<SceneResponse>("/api/scene", req);
+  const data = await postJson<SceneResponse>("/api/scene", {
+    ...req,
+    session: stripVoicesForTransport(req.session),
+  });
+  // Server stripped known-character voices for bandwidth — re-attach the
+  // voices we already hold so fetchBeatAudio can synth them.
+  data.characters = mergeCharactersPreserveVoice(req.session.characters, data.characters);
+  return data;
 }
 
 export async function visionDecide(req: VisionRequest): Promise<VisionResponse> {
@@ -85,7 +127,10 @@ export async function visionDecide(req: VisionRequest): Promise<VisionResponse> 
   if (config) {
     return visionDecideClient(config, req);
   }
-  return postJson<VisionResponse>("/api/vision", req);
+  return postJson<VisionResponse>("/api/vision", {
+    ...req,
+    session: stripVoicesForTransport(req.session),
+  });
 }
 
 export async function classifyFreeform(
@@ -95,7 +140,10 @@ export async function classifyFreeform(
   if (config) {
     return classifyFreeformClient(config, req);
   }
-  return postJson<FreeformClassifyResponse>("/api/classify-freeform", req);
+  return postJson<FreeformClassifyResponse>("/api/classify-freeform", {
+    ...req,
+    session: stripVoicesForTransport(req.session),
+  });
 }
 
 export async function requestInsertBeat(
@@ -105,5 +153,12 @@ export async function requestInsertBeat(
   if (config) {
     return requestInsertBeatClient(config, req);
   }
-  return postJson<InsertBeatResponse>("/api/insert-beat", req);
+  const data = await postJson<InsertBeatResponse>("/api/insert-beat", {
+    ...req,
+    session: stripVoicesForTransport(req.session),
+  });
+  // /api/insert-beat strips voice from ALL characters before responding —
+  // re-attach every voice the client already holds so audio keeps working.
+  data.characters = mergeCharactersPreserveVoice(req.session.characters, data.characters);
+  return data;
 }
