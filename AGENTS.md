@@ -21,7 +21,7 @@ InfiPlot is a Next.js 16 / React 19 / TypeScript app for AI-driven interactive v
 - `lib/engine/agents/`: Architect, Writer, CharacterDesigner, Cinematographer, Painter.
 - `lib/engine/prompts.ts`: Agent prompts and prompt-cache-sensitive message builders.
 - `lib/ai-client/`: Text, image, vision, and retry wrappers.
-- `lib/tts-client/`: TTS integration.
+- `lib/tts-client/`: TTS integration. `stepfun-voices.json` is the single source of truth for the 32 StepFun preset voices (shared by the scorer, CharacterDesigner prompt, `/api/tts-provider`, and the enrich script).
 - `lib/config.ts`: Server-side provider/environment loading.
 - `lib/presets.ts`, `lib/ttsPresets.ts`, `lib/options.ts`: Home-page presets and selectable options.
 - `scripts/`: Asset and preset generation helpers.
@@ -91,8 +91,9 @@ Common routes live under `app/api/`:
 - `POST /api/scene`: generates the next scene from an existing session.
 - `POST /api/vision`: interprets scene-image clicks.
 - `POST /api/insert-beat`: creates a transient beat without image generation.
-- `POST /api/beat-audio`: lazy TTS for a displayed beat; returns binary audio, or `204` when silent.
+- `POST /api/beat-audio`: lazy TTS for a displayed beat; returns binary audio, or `204` when silent. `voice` is now OPTIONAL — when the server runs StepFun, the client omits the ~220KB Xiaomi reference audio and sends `stepfunVoiceId` / `voiceDescription` instead (saves Fast Origin Transfer bandwidth). The engine re-provisions on a provider mismatch before synthesizing.
 - `POST /api/parse-style-image`: extracts a style prompt from uploaded reference art.
+- `GET /api/tts-provider`: returns `{ provider: "stepfun" | "xiaomi" | null }` (the server's TTS provider, inferred from `TTS_BASE_URL`). Probed once at `/play` mount (non-BYO) so `fetchBeatAudio` can shape its request body — skip the ~220KB Xiaomi reference audio when the server runs StepFun. BYO client TTS takes precedence over this signal.
 - `POST /api/story-pack` / `POST /api/story-unpack`: stateless AES-GCM packing/unpacking for playable story share `.infiplot` files; uses `GALLERY_SECRET`.
 
 When changing public types or route payloads, update all route callers and client consumers in the same change.
@@ -114,6 +115,7 @@ Use pnpm with Node >=22. `pnpm-lock.yaml` is the source of truth; `package-lock.
 - `pnpm start`: run production server after building.
 - `pnpm lint`: Next.js built-in lint.
 - `pnpm typecheck`: `tsc --noEmit`.
+- `pnpm enrich:firstacts`: one-off enrichment of `public/home/firstact{,-portrait}/*.json` — adds `characters[i].stepfunVoiceId` via a TEXT-provider LLM call per character (uses `.env.local`). Idempotent; `--force` re-picks, `--only=f0,f1` filters, `--portrait` targets the portrait set.
 - `pnpm build:cf`: Cloudflare Workers build through OpenNext.
 - `pnpm preview:cf`: local Cloudflare preview.
 - `pnpm deploy:cf`: Cloudflare deploy.
@@ -139,7 +141,7 @@ Use `.env.example` as the source of truth. Never commit `.env.local`, API keys, 
 - Text and Vision use `TEXT_*` and `VISION_*` over the `openai_compatible` protocol (the only supported text/vision protocol); Claude and Gemini are reached via their own OpenAI-compatible endpoints with the `*_PROVIDER` var unset.
 - Image uses `IMAGE_*`; supported protocols are `runware`, `openai_compatible`, and native `openai`. When `IMAGE_PROVIDER` is unset, Runware is inferred from `*.runware.ai` URLs and otherwise falls back to OpenAI-compatible image generations.
 - `IMAGE_TIMEOUT_MS` (per-attempt hard deadline) and `IMAGE_HEDGE_MS` (Painter scene-paint hedging: race a second request when the first is still pending after the threshold) are both OFF when unset — the default path must stay byte-identical to historical behavior. Hedging applies only to the Tier-A scene paint, never to portraits, and never fires after a fast failure (saturation guard). Client-side engine configs (`resolveEngineConfig`) intentionally do not set these fields.
-- TTS supports Xiaomi MiMo (voicedesign + voiceclone) or StepFun (preset voices auto-selected by keyword scoring), inferred from `TTS_BASE_URL` (host containing `stepfun.com` → StepFun, otherwise → MiMo). `CharacterVoice` is a discriminated union on `provider`; synth dispatches on the voice's own tag so a session may carry both shapes through a provider switch. Blank config means silent mode.
+- TTS supports Xiaomi MiMo (voicedesign + voiceclone) or StepFun (preset voices), inferred from `TTS_BASE_URL` (host containing `stepfun.com` → StepFun, otherwise → MiMo). `CharacterVoice` is a discriminated union on `provider`; synth dispatches on the voice's own tag so a session may carry both shapes through a provider switch. Blank config means silent mode. StepFun voice selection: the CharacterDesigner LLM picks a preset id directly from the 32-entry catalog (`lib/tts-client/stepfun-voices.json`, rendered by `formatStepfunCatalogForPrompt`) when `config.tts` is StepFun — zero extra LLM call. `pickStepfunVoiceId` (keyword scorer) is the fallback for orphan speakers / invalid picks. Prebaked homepage cards are enriched with `Character.stepfunVoiceId` via `scripts/enrich-firstacts-stepfun.mjs` so a card works under either server provider.
 - `MOCK_IMAGE=true` skips image generation and returns a placeholder for cheap local iteration.
 - `NEXT_PUBLIC_IMAGE_PROXY_URL` and `NEXT_PUBLIC_IMAGE_PROXY_ALLOWED_HOSTS` opt into browser-side image proxying for allowed hosts.
 - Analytics uses optional Umami `NEXT_PUBLIC_UMAMI_*` values and must stay content-free/privacy-preserving.
@@ -148,7 +150,7 @@ Use `.env.example` as the source of truth. Never commit `.env.local`, API keys, 
 
 ## File Dependency Map
 
-If modifying Writer, also check `director.ts`, `prompts.ts`, WriterPlan/StoryState types, and Cinematographer/Painter consumers. If modifying CharacterDesigner, check Director scheduling/merge logic, portrait prompts, voice provisioning, and Painter reference collection. If modifying Cinematographer or Painter, check Director, prompt builders, provider image options, orientation handling, and reference priority. If modifying Architect, check `orchestrator.ts`, `prompts.ts`, and StoryState patch rules. If modifying `lib/types/index.ts`, check all agents, Director, Orchestrator, API routes, and client consumers in `app/page.tsx`, `app/play/page.tsx`, and `components/PlayCanvas.tsx`. If modifying TTS, check server `beat-audio`, BYO client TTS, voice stripping/merging, and payload privacy. If modifying image delivery, check Painter, `lib/ai-client/image.ts`, mock images, orientation dimensions, preload/proxy logic, and style-reference validation.
+If modifying Writer, also check `director.ts`, `prompts.ts`, WriterPlan/StoryState types, and Cinematographer/Painter consumers. If modifying CharacterDesigner, check Director scheduling/merge logic, portrait prompts, voice provisioning, Painter reference collection, and (StepFun path) the `buildCharacterDesignerSystem` catalog injection + `stepfunVoiceId` validation. If modifying the StepFun voice catalog (`lib/tts-client/stepfun-voices.json`), also check `formatStepfunCatalogForPrompt`, `isValidStepfunVoiceId`, the CharacterDesigner system prompt, and the enrich script. If modifying Cinematographer or Painter, check Director, prompt builders, provider image options, orientation handling, and reference priority. If modifying Architect, check `orchestrator.ts`, `prompts.ts`, and StoryState patch rules. If modifying `lib/types/index.ts`, check all agents, Director, Orchestrator, API routes, and client consumers in `app/page.tsx`, `app/play/page.tsx`, and `components/PlayCanvas.tsx`. If modifying TTS, check server `beat-audio` (including the `resolveVoice` provider-mismatch normalization), `/api/tts-provider`, BYO client TTS, voice stripping/merging, payload privacy, and the StepFun voice-id flow (CharacterDesigner → provision → synth). If modifying image delivery, check Painter, `lib/ai-client/image.ts`, mock images, orientation dimensions, preload/proxy logic, and style-reference validation.
 
 ## Guide Maintenance
 

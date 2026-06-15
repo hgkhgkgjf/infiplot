@@ -1,6 +1,7 @@
 import type {
   BeatAudioRequest,
   BeatAudioResponse,
+  CharacterVoice,
   EngineConfig,
   FreeformClassify,
   FreeformClassifyRequest,
@@ -17,6 +18,7 @@ import type {
 } from "@infiplot/types";
 import { coerceOrientation } from "@infiplot/types";
 import { chat } from "@infiplot/ai-client";
+import { isStepfun, isValidStepfunVoiceId, provisionVoice } from "@infiplot/tts-client";
 import { runArchitect } from "./agents/architect";
 import { selectStyle } from "./agents/styleSelector";
 import { directInsertBeat, directScene } from "./director";
@@ -241,11 +243,73 @@ export async function requestInsertBeat(
 //  timeout / failure / TTS disabled, so the client just plays silent.
 // ──────────────────────────────────────────────────────────────────────
 
+// Resolve a synth-ready voice for the request, normalizing provider
+// mismatches. The client usually sends a voice whose provider matches the
+// server's TTS (the common case). The mismatch case is mainly prebaked
+// homepage cards: they ship a Xiaomi voice baked at build time, but the
+// server may now run StepFun — so the client skips the ~220KB reference
+// audio (saving FOT) and sends stepfunVoiceId / voiceDescription instead.
+// We re-provision against the SERVER's provider so the right voice synth runs.
+// Returns undefined when there's nothing to synthesize from (caller plays
+// silent).
+async function resolveVoice(
+  config: EngineConfig,
+  req: BeatAudioRequest,
+): Promise<CharacterVoice | undefined> {
+  const serverStepfun = !!config.tts && isStepfun(config.tts);
+  const voiceProvider = req.voice?.provider;
+  const voiceMatchesServer =
+    (voiceProvider === "stepfun" && serverStepfun) ||
+    (voiceProvider === "xiaomi" && !serverStepfun);
+
+  // Fast path: the client sent a matching voice. (Also covers the legacy
+  // xiaomi card + xiaomi server case where the 220KB was unavoidable anyway.)
+  if (req.voice && voiceMatchesServer) {
+    return req.voice;
+  }
+
+  // Mismatch (or voice omitted). Re-provision against the server's provider.
+  if (!config.tts) return undefined;
+
+  // StepFun server: prefer an LLM-picked / prebaked id (zero-cost), else
+  // fall back to the keyword scorer over the voiceDescription.
+  if (serverStepfun) {
+    if (isValidStepfunVoiceId(req.stepfunVoiceId)) {
+      return provisionVoice(config.tts, req.voiceDescription ?? "", req.characterName, {
+        stepfunVoiceId: req.stepfunVoiceId,
+      });
+    }
+    if (req.voiceDescription) {
+      return provisionVoice(config.tts, req.voiceDescription, req.characterName);
+    }
+    return undefined;
+  }
+
+  // Xiaomi server but client sent a StepFun voice (or nothing). Re-design via
+  // voicedesign using the description; no description → can't synthesize.
+  //
+  // NOTE: this re-provision runs OUTSIDE synthesizeBeat's 15s withTimeout — a
+  // hung MiMo voicedesign tail (~30-70s) could hang /api/beat-audio until the
+  // platform timeout. Accepted because: (1) this path only fires on a rare
+  // cross-provider replay (.infiplot carrying a stepfun voice, opened on a
+  // Xiaomi-server deploy) or a mid-session provider flip — NOT the common
+  // prebaked-card + stepfun-server case, which is a pure-function provision
+  // with no network; (2) it degrades to silence rather than crashing. If it
+  // ever bites in practice, wrap resolve+synth in one withTimeout in voice.ts
+  // (requires threading an AbortSignal through provisionVoice → xiaomiProvision).
+  if (req.voiceDescription) {
+    return provisionVoice(config.tts, req.voiceDescription, req.characterName);
+  }
+  return undefined;
+}
+
 export async function requestBeatAudio(
   config: EngineConfig,
   req: BeatAudioRequest,
 ): Promise<BeatAudioResponse> {
   if (!config.tts) return { audio: null };
-  const audio = await synthesizeBeat(config.tts, req.voice, req.beat);
+  const voice = await resolveVoice(config, req);
+  if (!voice) return { audio: null };
+  const audio = await synthesizeBeat(config.tts, voice, req.beat);
   return { audio };
 }

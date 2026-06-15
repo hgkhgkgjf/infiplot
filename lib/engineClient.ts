@@ -22,6 +22,7 @@ import type {
   Session,
   StartRequest,
   StartResponse,
+  TtsProvider,
   VisionRequest,
   VisionResponse,
 } from "@infiplot/types";
@@ -56,6 +57,17 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
       // ignore parse failure, keep HTTP status message
     }
     throw new Error(message);
+  }
+  return res.json() as Promise<T>;
+}
+
+// GET variant of postJson — same 401 → AuthRequiredError mapping. Used by
+// getTtsProvider (a tiny config probe, no body).
+async function getJson<T>(path: string): Promise<T> {
+  const res = await fetch(path, { method: "GET" });
+  if (!res.ok) {
+    if (res.status === 401) throw new AuthRequiredError();
+    throw new Error(`HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
@@ -98,6 +110,29 @@ function mergeCharactersPreserveVoice(
 // client-side engine directly (talking to providers from the browser).
 // Otherwise they fall back to the server-side API routes, which read
 // environment variables — useful for Vercel deploys that already supply keys.
+
+// Probe the server's TTS provider so fetchBeatAudio can shape its request body
+// (skip the ~220KB Xiaomi reference audio when the server runs StepFun).
+//
+// BYO precedence: when the browser has a client model config (BYO mode),
+// voice synthesis always runs locally against the user's own Xiaomi key, so
+// the server provider is irrelevant — return "xiaomi" synchronously without a
+// round-trip. Non-BYO → GET /api/tts-provider. Errors degrade to null (the
+// caller then sends voice fields defensively and the server normalizes).
+export async function getTtsProvider(): Promise<TtsProvider> {
+  if (getClientConfig()) return "xiaomi";
+  try {
+    const data = await getJson<{ provider: TtsProvider }>("/api/tts-provider");
+    return data.provider;
+  } catch (e) {
+    // AuthRequiredError (401) propagates so the caller's handleAuthError can
+    // surface the login modal; other errors (network, 5xx) → null = unknown,
+    // and fetchBeatAudio falls back to sending everything + server normalizes.
+    if (e instanceof AuthRequiredError) throw e;
+    console.warn("[getTtsProvider] probe failed, assuming unknown:", e);
+    return null;
+  }
+}
 
 export async function startSession(req: StartRequest): Promise<StartResponse> {
   const config = getClientConfig();

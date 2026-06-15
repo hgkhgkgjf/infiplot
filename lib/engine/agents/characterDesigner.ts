@@ -1,5 +1,10 @@
 import { chat, generateImage } from "@infiplot/ai-client";
-import { provisionVoice } from "@infiplot/tts-client";
+import {
+  isStepfun,
+  isValidStepfunVoiceId,
+  provisionVoice,
+  type ProvisionVoiceOptions,
+} from "@infiplot/tts-client";
 import type {
   Character,
   CharacterVoice,
@@ -9,7 +14,7 @@ import type {
 import { parseJsonLoose } from "../jsonParser";
 import { mockImageDataUri } from "../mockImage";
 import {
-  CHARACTER_DESIGNER_SYSTEM,
+  buildCharacterDesignerSystem,
   buildCharacterDesignerUserMessage,
   buildCharacterPortraitPrompt,
 } from "../prompts";
@@ -34,6 +39,10 @@ import {
 type CharacterDesignOutput = {
   visualDescription?: string;
   voiceDescription?: string;
+  /** Only present on the StepFun path (the system prompt asks for it when
+   *  stepfun:true). Hallucinated / out-of-catalog ids are dropped before
+   *  they reach provisioning, falling back to pickStepfunVoiceId. */
+  stepfunVoiceId?: string;
 };
 
 // TEMP: per-phase timing for latency diagnosis. Same convention as the
@@ -50,7 +59,7 @@ async function runDesignLLM(
   const raw = await chat(
     config.text,
     [
-      { role: "system", content: CHARACTER_DESIGNER_SYSTEM },
+      { role: "system", content: buildCharacterDesignerSystem({ stepfun: stepfunEnabled(config) }) },
       {
         role: "user",
         content: buildCharacterDesignerUserMessage(charName, session),
@@ -59,6 +68,13 @@ async function runDesignLLM(
     { temperature: 0.7, tag: "character-designer" },
   );
   return parseJsonLoose<CharacterDesignOutput>(raw);
+}
+
+/** True when the server's TTS config points at StepFun (so the CharacterDesigner
+ *  should also pick a preset voice id). Returns false when TTS is off or on the
+ *  Xiaomi path — keeping the Xiaomi prompt byte-identical to history. */
+function stepfunEnabled(config: EngineConfig): boolean {
+  return !!config.tts && isStepfun(config.tts);
 }
 
 // Generate the per-character base portrait. The portrait is a "concept
@@ -105,10 +121,11 @@ export async function provisionCharacterVoice(
   config: EngineConfig,
   voiceDescription: string,
   charName: string,
+  opts?: ProvisionVoiceOptions,
 ): Promise<CharacterVoice | undefined> {
   if (!config.tts) return undefined;
   try {
-    return await provisionVoice(config.tts, voiceDescription, charName);
+    return await provisionVoice(config.tts, voiceDescription, charName, opts);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`[characterDesigner] voice provision failed for ${charName}: ${msg}`);
@@ -120,10 +137,18 @@ export async function provisionCharacterVoice(
 // call. The director then schedules renderCharacterPortrait /
 // provisionCharacterVoice around the Painter. Multiple new characters in the
 // same scene run this stage in parallel at the director level.
+//
+// On the StepFun path the same call ALSO yields stepfunVoiceId (the model
+// picks from the 32-preset catalog it sees in the system prompt). An invalid
+// pick is dropped here so the downstream provision falls back to the keyword
+// scorer — never trust an LLM-hallucinated id at the synth boundary.
 export type CharacterCard = {
   name: string;
   visualDescription?: string;
   voiceDescription: string;
+  /** Only set on the StepFun path AND only when the LLM picked a valid catalog
+   *  id. Threads through provisionCharacterVoice → stepfunProvision. */
+  stepfunVoiceId?: string;
 };
 
 export async function designCharacterCard(
@@ -135,12 +160,19 @@ export async function designCharacterCard(
   const design = await runDesignLLM(config, session, charName);
   tlog(`[charDesigner ${charName}] design LLM`, tDesign);
 
+  // Drop invalid catalog picks before they reach provision/synth. A hallucinated
+  // id would 4xx at synth time; better to fall back to pickStepfunVoiceId now.
+  const stepfunVoiceId = isValidStepfunVoiceId(design.stepfunVoiceId)
+    ? design.stepfunVoiceId
+    : undefined;
+
   return {
     name: charName,
     visualDescription: design.visualDescription?.trim() || undefined,
     voiceDescription:
       design.voiceDescription?.trim() ||
       `请根据角色名「${charName}」推断其性别、年龄与气质，生成最贴合的音色。所属世界观：${session.worldSetting}`,
+    stepfunVoiceId,
   };
 }
 

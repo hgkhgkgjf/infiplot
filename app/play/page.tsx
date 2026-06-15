@@ -35,6 +35,7 @@ import {
   visionDecide,
   classifyFreeform,
   requestInsertBeat,
+  getTtsProvider,
   AuthRequiredError,
 } from "@/lib/engineClient";
 import type {
@@ -49,6 +50,7 @@ import type {
   Session,
   StartResponse,
   TtsConfig,
+  TtsProvider,
 } from "@infiplot/types";
 import { track } from "@/lib/analytics";
 import { AUTH_ENABLED } from "@/lib/supabase/config";
@@ -779,6 +781,14 @@ function PlayInner() {
     loadClientTtsConfig(),
   );
   const byoTtsRef = useRef<TtsConfig | null>(byoTtsConfig);
+  // Server TTS provider (probed once at mount via /api/tts-provider). Used by
+  // fetchBeatAudio to decide which voice fields to send: when the server runs
+  // StepFun, omit the ~220KB Xiaomi `voice` and send stepfunVoiceId /
+  // voiceDescription instead (saves Fast Origin Transfer bandwidth). null =
+  // probe failed or server has no TTS; fetchBeatAudio then sends defensively
+  // and the server normalizes. Ignored entirely in BYO mode (byoTtsRef wins).
+  const [serverTtsProvider, setServerTtsProvider] = useState<TtsProvider>(null);
+  const serverTtsProviderRef = useRef<TtsProvider>(null);
   // BYO voice cache (see resolveByoVoice). Keyed by character name; persists
   // across scenes so each speaker is provisioned at most once per session.
   const provisionedVoicesRef = useRef<Map<string, Promise<CharacterVoice>>>(
@@ -854,7 +864,34 @@ function PlayInner() {
     phaseRef.current = phase;
   }, [phase]);
   useEffect(() => {
+    serverTtsProviderRef.current = serverTtsProvider;
+  }, [serverTtsProvider]);
+  useEffect(() => {
     setVisionClickEnabled(readStoredVisionClick());
+  }, []);
+
+  // Probe the server's TTS provider ONCE at mount. Non-BYO users need this so
+  // fetchBeatAudio can skip the ~220KB Xiaomi reference audio when the server
+  // runs StepFun. BYO users never read this ref (byoTtsRef takes precedence),
+  // but the probe is harmless and cheap, so we run it unconditionally and let
+  // getTtsProvider short-circuit for BYO. AuthRequiredError is handled by the
+  // bootstrap flow's handleAuthError; other errors degrade to null silently.
+  useEffect(() => {
+    let cancelled = false;
+    getTtsProvider()
+      .then((p) => {
+        if (!cancelled) setServerTtsProvider(p);
+      })
+      .catch((e) => {
+        if (!cancelled && e instanceof AuthRequiredError) {
+          // Defer to the bootstrap effect's auth modal — leave provider null.
+          return;
+        }
+        // Non-auth errors already logged in getTtsProvider; null = unknown.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function trackPlayError(source: ErrorSource, e: unknown, startMs: number, res?: Response) {
@@ -948,11 +985,23 @@ function PlayInner() {
       if (!speaker) return;
 
       const byo = byoTtsRef.current;
-      // Non-BYO relies on the server having provisioned speaker.voice. BYO
-      // skipped server TTS, so it needs a baked voice (prebaked card) or a
-      // voiceDescription to provision from in the browser.
-      if (!byo && !speaker.voice) return;
-      if (byo && !speaker.voice && !speaker.voiceDescription) return;
+      const serverProvider = serverTtsProviderRef.current;
+      // What we need to synthesize depends on the path:
+      //   - BYO (xiaomi): baked voice OR voiceDescription to provision locally.
+      //   - Server stepfun: stepfunVoiceId or voiceDescription — no Xiaomi
+      //     `voice` needed (saves the ~220KB reference-audio FOT).
+      //   - Server xiaomi / unknown (probe pending): accept ANY synthesizable
+      //     source. The null case covers the race where getTtsProvider hasn't
+      //     resolved before the first beat fetch fires — without this widening
+      //     a stepfun-only speaker (no Xiaomi voice) would be silently dropped.
+      //     The server resolves + normalizes regardless of which fields arrive.
+      if (byo) {
+        if (!speaker.voice && !speaker.voiceDescription) return;
+      } else if (serverProvider === "stepfun") {
+        if (!speaker.stepfunVoiceId && !speaker.voiceDescription) return;
+      } else {
+        if (!speaker.voice && !speaker.stepfunVoiceId && !speaker.voiceDescription) return;
+      }
 
       if (beatAudioAbortRef.current.has(beat.id)) return;
       const abort = new AbortController();
@@ -977,17 +1026,35 @@ function PlayInner() {
           );
           audioUrl = `data:${out.mimeType};base64,${out.audioBase64}`;
         } else {
-          // Server-side synth: POST just this beat + the speaker's voice (not
-          // the whole session) to /api/beat-audio. Returns 204 when the engine
-          // had nothing to say (no TTS configured / empty synth) and binary
-          // audio otherwise. Both 204 and !ok count as a silence strike so the
-          // nudge surfaces when the shared server key is being rate-limited.
+          // Server-side synth: shape the body by the probed provider so we don't
+          // waste Fast Origin Transfer bandwidth on the ~220KB Xiaomi reference
+          // audio when the server actually runs StepFun.
+          //   - stepfun → stepfunVoiceId + voiceDescription + characterName
+          //     (all lightweight; the server synths directly with the id).
+          //   - xiaomi / unknown → voice (the ~220KB reference audio the server
+          //     needs to clone), PLUS the lightweight fallback fields so the
+          //     server can still normalize on a provider mismatch (e.g. a prebaked
+          //     card holding a Xiaomi voice while the server runs StepFun).
+          const isStepfunServer = serverProvider === "stepfun";
           const res = await fetch("/api/beat-audio", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               beat: { id: beat.id, line: beat.line, lineDelivery: beat.lineDelivery },
-              voice: speaker.voice,
+              ...(isStepfunServer
+                ? {
+                    stepfunVoiceId: speaker.stepfunVoiceId,
+                    voiceDescription: speaker.voiceDescription,
+                    characterName: speaker.name,
+                  }
+                : {
+                    voice: speaker.voice,
+                    // Defensive fallback fields (lightweight) — let the server
+                    // re-provision if speaker.voice.provider ≠ server provider.
+                    stepfunVoiceId: speaker.stepfunVoiceId,
+                    voiceDescription: speaker.voiceDescription,
+                    characterName: speaker.name,
+                  }),
             }),
             signal: abort.signal,
           });

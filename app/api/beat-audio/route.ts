@@ -17,18 +17,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Accept either provider's voice shape — xiaomi carries referenceAudioBase64,
-  // stepfun carries voiceId. We only check the discriminator + the line text;
-  // shape-specific validation lives in each provider's synth function.
+  // Voice is now optional — when the server runs StepFun, the client omits
+  // the ~220KB Xiaomi reference audio and sends stepfunVoiceId /
+  // voiceDescription instead (saves Fast Origin Transfer bandwidth). The
+  // engine's resolveVoice re-provisions on a provider mismatch. We only
+  // require the beat text + SOMETHING to synthesize from.
   const VALID_TTS_PROVIDERS = ["xiaomi", "stepfun"];
+  const hasInvalidVoiceProvider =
+    !!body.voice?.provider && !VALID_TTS_PROVIDERS.includes(body.voice.provider);
+  const hasVoice =
+    !!body.voice?.provider && VALID_TTS_PROVIDERS.includes(body.voice.provider);
+  const hasFallback =
+    !!body.stepfunVoiceId || !!body.voiceDescription;
   if (
     !body.beat?.id ||
     !body.beat?.line ||
-    !body.voice?.provider ||
-    !VALID_TTS_PROVIDERS.includes(body.voice.provider)
+    hasInvalidVoiceProvider ||
+    (!hasVoice && !hasFallback)
   ) {
     return NextResponse.json(
-      { error: "beat.id, beat.line and voice.provider (xiaomi|stepfun) are required" },
+      { error: "beat.id and beat.line are required, plus either voice.provider (xiaomi|stepfun) or stepfunVoiceId/voiceDescription" },
       { status: 400 },
     );
   }

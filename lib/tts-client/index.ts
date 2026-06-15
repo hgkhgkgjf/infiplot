@@ -1,14 +1,31 @@
-import type { CharacterVoice, TtsConfig } from "@infiplot/types";
-import { stepfunProvision, stepfunSynthesize } from "./stepfun";
+import type { CharacterVoice, TtsConfig, TtsProvider } from "@infiplot/types";
+import {
+  formatStepfunCatalogForPrompt,
+  isStepfun,
+  isValidStepfunVoiceId,
+  stepfunProvision,
+  type StepfunProvisionOptions,
+  stepfunSynthesize,
+} from "./stepfun";
 import { xiaomiProvision, xiaomiSynthesize } from "./xiaomi";
 
-// Provider auto-detection by base URL — mirrors the image client convention
-// of inferring Runware from *.runware.ai and falling back otherwise. Keeps
-// the BYO client flow unchanged: TTS_PROVIDER env var stays unused, and
-// browser-side keys (Xiaomi only today) keep working through the xiaomi path.
-function isStepfun(cfg: TtsConfig): boolean {
-  return /(^|[./])stepfun\.com\b/i.test(cfg.baseUrl);
+// Re-export so /api/tts-provider, orchestrator, CharacterDesigner prompt, and
+// the client all share ONE provider-detection rule + ONE catalog rendering +
+// ONE validity check with the synth path.
+export { isStepfun, isValidStepfunVoiceId, formatStepfunCatalogForPrompt };
+
+/** Map a configured TtsConfig to its provider tag. Single source of truth for
+ *  the inference rule (host contains stepfun.com → stepfun, else xiaomi) so
+ *  /api/tts-provider and resolveVoice can't drift when a third provider is
+ *  added. A PRESENT TtsConfig always maps to a concrete provider — `null`
+ *  (no TTS configured) is the caller's responsibility to handle separately. */
+export function inferTtsProvider(cfg: TtsConfig): Exclude<TtsProvider, null> {
+  return isStepfun(cfg) ? "stepfun" : "xiaomi";
 }
+
+// `opts.stepfunVoiceId` threads the CharacterDesigner's LLM-selected preset
+// down to stepfunProvision. Xiaomi ignores it. See StepfunProvisionOptions.
+export type ProvisionVoiceOptions = StepfunProvisionOptions;
 
 export async function provisionVoice(
   cfg: TtsConfig,
@@ -18,9 +35,10 @@ export async function provisionVoice(
   // clip per call regardless. Threading it through keeps the API uniform
   // and prevents archetype collisions on the StepFun path.
   salt?: string,
+  opts?: ProvisionVoiceOptions,
 ): Promise<CharacterVoice> {
   return isStepfun(cfg)
-    ? stepfunProvision(cfg, description, salt)
+    ? stepfunProvision(cfg, description, salt, opts)
     : xiaomiProvision(cfg, description);
 }
 

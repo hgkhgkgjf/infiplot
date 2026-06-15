@@ -19,9 +19,6 @@ const SHADOW =
 
 const DEFAULT_CHAR_MS = 28;
 const MIN_CHAR_MS = 30;
-// Voice playback speed multiplier. >1 speeds up the (somewhat slow) MiMo voice
-// while preserving pitch. Typewriter pacing is divided by the same factor.
-const SPEECH_RATE = 1.2;
 // If audio metadata never arrives within this window, give up waiting and
 // let the typewriter run at default speed.
 const AUDIO_WAIT_TIMEOUT_MS = 2500;
@@ -261,7 +258,6 @@ export function PlayCanvas({
     const el = audioRef.current;
     if (!el) return;
     el.muted = muted;
-    el.playbackRate = SPEECH_RATE;
     if (!muted && audioSrc && el.paused) {
       el.play().catch(() => {
         // autoplay blocked — silent until next interaction
@@ -272,11 +268,7 @@ export function PlayCanvas({
   function handleAudioMetadata() {
     const el = audioRef.current;
     if (!el) return;
-    el.playbackRate = SPEECH_RATE;
-    // Effective playback time is shorter once sped up — keep the typewriter in sync.
-    const ms = Number.isFinite(el.duration)
-      ? (el.duration * 1000) / SPEECH_RATE
-      : 0;
+    const ms = Number.isFinite(el.duration) ? el.duration * 1000 : 0;
     setAudioDurationMs(ms > 0 ? ms : 0);
     if (!muted) {
       el.play().catch(() => {
