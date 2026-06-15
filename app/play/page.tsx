@@ -52,7 +52,7 @@ import type {
 } from "@infiplot/types";
 import { track } from "@/lib/analytics";
 import { AUTH_ENABLED } from "@/lib/supabase/config";
-import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { writeResumeSnapshot, consumeResumeSnapshot } from "@/lib/authResume";
 import { AuthModal } from "@/components/AuthModal";
 import { UserChip } from "@/components/UserChip";
 
@@ -709,23 +709,15 @@ function PlayInner() {
       imageOriginalUrl,
       pendingAction: pendingResumeActionRef.current ?? undefined,
     };
-    const tryWrite = (payload: PlayResumeSnapshot): boolean => {
-      try {
-        sessionStorage.setItem(PLAY_RESUME_KEY, JSON.stringify(payload));
-        return true;
-      } catch {
-        return false; // QuotaExceededError — try a lighter payload below
-      }
-    };
-    if (tryWrite(snap)) return;
-    // Drop the heaviest data-URL field (user-uploaded style ref, ~100KB) and
-    // retry. It only affects the Painter on FUTURE scenes, not the resumed
-    // scene, so losing it degrades gracefully. Voices are deliberately kept —
-    // preserving voice continuity matters more than the rare quota miss, and a
-    // typical session (remote-image URLs + a few ~160KB voice refs) fits well
-    // under sessionStorage's 5MB cap. If still too big, give up: resume is
-    // disabled for this trip and the page falls back to normal bootstrap.
-    tryWrite({ ...snap, session: { ...sess, styleReferenceImage: undefined } });
+    // Quota-safe write: the only heavy field is the user-uploaded style ref
+    // (~100KB data URL), which only affects the Painter on FUTURE scenes, not
+    // the resumed scene — so stripping it degrades gracefully. Voices are
+    // deliberately kept (continuity > rare quota miss; a typical session of
+    // remote-image URLs + a few ~160KB voice refs fits under the 5MB cap).
+    writeResumeSnapshot(PLAY_RESUME_KEY, snap, [
+      // Fallback: drop the style-reference data URL from the session.
+      { ...snap, session: { ...sess, styleReferenceImage: undefined } },
+    ]);
   }, []);
 
   // Restore an in-progress game from a PLAY_RESUME_KEY snapshot after an OAuth
@@ -1487,33 +1479,28 @@ function PlayInner() {
     // login never writes a snapshot — its onSuccess retry keeps state
     // in-memory.
     if (AUTH_ENABLED) {
-      const resumeRaw = sessionStorage.getItem(PLAY_RESUME_KEY);
-      if (resumeRaw) {
-        sessionStorage.removeItem(PLAY_RESUME_KEY);
-        // Let the async resume run; on failure it relinquishes the slot so the
-        // normal bootstrap below re-runs. Either way return here — the sync
-        // body must not run while the OAuth return is being reconciled.
-        void (async () => {
-          try {
-            const sb = createSupabaseClient();
-            const { data } = await sb.auth.getUser();
-            if (!data.user) {
-              // OAuth failed/not signed in → fall back to normal bootstrap.
-              startedRef.current = false;
-              setRetryBootstrap((n) => n + 1);
-              return;
-            }
-            await restorePlayResume(
-              JSON.parse(resumeRaw) as PlayResumeSnapshot,
-            );
-          } catch {
-            // Corrupt snapshot / network — relinquish and bootstrap normally.
-            startedRef.current = false;
-            setRetryBootstrap((n) => n + 1);
-          }
-        })();
-        return;
-      }
+      // Let the async resume run; on failure (no snapshot / not signed in /
+      // corrupt) it relinquishes the slot so the normal bootstrap below
+      // re-runs. Either way return here — the sync body must not run while the
+      // OAuth return is being reconciled.
+      void (async () => {
+        const snap = await consumeResumeSnapshot<PlayResumeSnapshot>(
+          PLAY_RESUME_KEY,
+        );
+        if (!snap) {
+          startedRef.current = false;
+          setRetryBootstrap((n) => n + 1);
+          return;
+        }
+        try {
+          await restorePlayResume(snap);
+        } catch {
+          // Corrupt snapshot / network — relinquish and bootstrap normally.
+          startedRef.current = false;
+          setRetryBootstrap((n) => n + 1);
+        }
+      })();
+      return;
     }
 
     // 三条进入路径：

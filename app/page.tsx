@@ -17,7 +17,7 @@ import { readStoredModelConfig, resolveEngineConfig } from "@/lib/clientModelCon
 import { STYLE_EXTRACTION_PROMPT } from "@/lib/styleExtraction";
 import { STORY_SHARE_STORAGE_KEY, parseStoryShareDoc } from "@/lib/storyShare";
 import { AUTH_ENABLED } from "@/lib/supabase/config";
-import { createClient as createSupabaseClient } from "@/lib/supabase/client";
+import { isAuthed, writeResumeSnapshot } from "@/lib/authResume";
 import { AuthModal } from "@/components/AuthModal";
 import { UserChip } from "@/components/UserChip";
 
@@ -854,15 +854,6 @@ function CategorySelect({
 const PENDING_START_KEY = "infiplot:pending-start";
 const PENDING_PARSE_KEY = "infiplot:pending-parse";
 
-// True when auth is disabled (self-host with blank Supabase env) or the visitor
-// already has a session. Gates the vision call behind login.
-async function isAuthed(): Promise<boolean> {
-  if (!AUTH_ENABLED) return true;
-  const sb = createSupabaseClient();
-  const { data } = await sb.auth.getUser();
-  return !!data.user;
-}
-
 // Shared by the StyleModal uploader and the post-login resume path: turns a
 // resized data URL into an English style prompt, via the browser engine when a
 // BYO model config is present, otherwise the server route.
@@ -1399,19 +1390,11 @@ export default function HomePage() {
 
   const persistPendingStart = () => {
     const snap = { prompt, sel, customStyleGuide, customStyleRefImage, playerName };
-    try {
-      sessionStorage.setItem(PENDING_START_KEY, JSON.stringify(snap));
-    } catch {
-      // Quota is usually blown by the data-URL style ref; drop it, keep text.
-      try {
-        sessionStorage.setItem(
-          PENDING_START_KEY,
-          JSON.stringify({ ...snap, customStyleRefImage: "" }),
-        );
-      } catch {
-        /* still too big — give up on resume, the form just clears */
-      }
-    }
+    // Quota fallback: the data-URL style ref (~100KB) is the usual culprit —
+    // drop it first; text-only form still resumes the start.
+    writeResumeSnapshot(PENDING_START_KEY, snap, [
+      { ...snap, customStyleRefImage: "" },
+    ]);
   };
 
   const resumePendingParse = async () => {
@@ -1461,12 +1444,15 @@ export default function HomePage() {
   // is now signed in, restore and continue; otherwise clear stale snapshots.
   useEffect(() => {
     if (!AUTH_ENABLED) return;
-    const hasPending =
-      sessionStorage.getItem(PENDING_START_KEY) !== null ||
-      sessionStorage.getItem(PENDING_PARSE_KEY) !== null;
-    if (!hasPending) return;
+    const hasStart = sessionStorage.getItem(PENDING_START_KEY) !== null;
+    const hasParse = sessionStorage.getItem(PENDING_PARSE_KEY) !== null;
+    if (!hasStart && !hasParse) return;
     let cancelled = false;
     void (async () => {
+      // Gate BOTH snapshots on auth: a stale leftover from an abandoned login
+      // must not resurrect a half-flow. The parse key stores a raw data URL
+      // with its own restore path (resumePendingParse), so both are gated
+      // manually here rather than via consumeResumeSnapshot.
       if (!(await isAuthed())) {
         sessionStorage.removeItem(PENDING_START_KEY);
         sessionStorage.removeItem(PENDING_PARSE_KEY);
@@ -1492,10 +1478,11 @@ export default function HomePage() {
 
   const start = async () => {
     if (AUTH_ENABLED) {
-      const sb = createSupabaseClient();
-      const { data } = await sb.auth.getUser();
-      if (!data.user) {
-        persistPendingStart();
+      if (!(await isAuthed())) {
+        // Don't snapshot here — persistPendingStart fires via
+        // AuthModal.onBeforeOAuth at redirect time, so the form is captured
+        // for BOTH OAuth and (harmlessly) OTP paths at the single source of
+        // truth. OTP's onSuccess resumes in-place without needing the snapshot.
         setPendingAction("start");
         setAuthModalOpen(true);
         return;
@@ -1992,7 +1979,8 @@ export default function HomePage() {
           onSuccess={() => {
             setAuthModalOpen(false);
             // Email-OTP stays on the page, so resume inline: parse first (it
-            // reads its own snapshot), then the pending start.
+            // reads its own snapshot), then the pending start. OTP never
+            // triggers onBeforeOAuth, so no PENDING_START snapshot was written.
             void resumePendingParse();
             if (pendingAction === "start") {
               setPendingAction(null);
@@ -2004,6 +1992,10 @@ export default function HomePage() {
               start();
             }
           }}
+          // Snapshot the form the instant the OAuth redirect begins — the
+          // round-trip unmounts the page and discards in-memory state. Fires
+          // only for Google/GitHub (signInWithOAuth), not OTP.
+          onBeforeOAuth={persistPendingStart}
         />
       )}
     </div>
