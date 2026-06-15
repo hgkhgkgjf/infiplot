@@ -52,10 +52,39 @@ import type {
 } from "@infiplot/types";
 import { track } from "@/lib/analytics";
 import { AUTH_ENABLED } from "@/lib/supabase/config";
+import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 import { AuthModal } from "@/components/AuthModal";
 import { UserChip } from "@/components/UserChip";
 
 const MUTED_STORAGE_KEY = "infiplot:muted";
+// One-shot snapshot of in-progress game state, written just before an OAuth
+// full-page redirect (Google/GitHub) so the play page can resume the exact
+// scene/beat after the round-trip. The redirect unmounts the app and destroys
+// the in-memory Session (the server is stateless), so without this the play
+// page re-bootstraps from `?card=…` and restarts the story. OTP login keeps
+// state in-memory (no redirect) and never writes this. Consumed once on mount.
+const PLAY_RESUME_KEY = "infiplot:play-resume";
+
+// Serializable form of the action intercepted by a 401. `persistPlayResume`
+// stashes whichever one is pending into sessionStorage; the deferred-replay
+// effect re-dispatches it after `restorePlayResume` commits the restored state.
+type PendingResumeAction =
+  | { kind: "choice"; choice: BeatChoice }
+  | { kind: "freeform"; text: string }
+  | { kind: "background-click"; x: number; y: number };
+
+// Shape written to sessionStorage[PLAY_RESUME_KEY]. `imageOriginalUrl` is the
+// remote CDN URL (never the blob: URL — those are revoked on unmount and won't
+// survive the full-page reload); restorePlayResume re-resolves it to a fresh
+// blob via getOrCreateBlobUrl.
+type PlayResumeSnapshot = {
+  session: Session;
+  beatId: string;
+  visitedBeats: string[];
+  orientation: Orientation;
+  imageOriginalUrl: string;
+  pendingAction?: PendingResumeAction;
+};
 
 // Consecutive silent (no-audio) beats before we surface the BYO-key nudge to a
 // non-BYO, unmuted player. Set high enough that one transient miss won't trip
@@ -618,6 +647,22 @@ function PlayInner() {
   const [visionClickEnabled, setVisionClickEnabled] = useState(true);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const authResolveRef = useRef<(() => void) | null>(null);
+  // Serializable description of the action that hit the 401 (choice / freeform
+  // text / background-click coords), captured alongside the retry closure. An
+  // OAuth round-trip destroys the closure, but this survives in sessionStorage
+  // so the exact action can be replayed after game state is restored.
+  const pendingResumeActionRef = useRef<PendingResumeAction | null>(null);
+  // Set by restorePlayResume when a snapshot carries a pending action; a
+  // dedicated effect dispatches it once the restored state has committed
+  // (phase "ready", session + scene present), then clears it. Mirrors the
+  // homepage's autoStartPending resume pattern.
+  const [pendingReplayAction, setPendingReplayAction] =
+    useState<PendingResumeAction | null>(null);
+  // Bumped by the OAuth-resume fallback to retrigger the bootstrap effect after
+  // relinquishing its `startedRef` slot (snapshot consumed but user not signed
+  // in → run normal card/preset/custom bootstrap instead of leaving a blank
+  // loading screen).
+  const [retryBootstrap, setRetryBootstrap] = useState(0);
   // Top-of-screen progress toast for the gallery / story export pipeline.
   // null when idle; { done, total, label } while collecting beat audio.
   const [exportProgress, setExportProgress] = useState<
@@ -627,14 +672,88 @@ function PlayInner() {
   // `retry` re-runs the action that hit the 401, replayed by AuthModal.onSuccess
   // after the user signs in. Omitted by callers whose path can't actually 401
   // (initial load already gated on the homepage, recorded replay is local).
+  // `action` is the serializable twin of `retry`: same intent, but survives an
+  // OAuth full-page redirect via sessionStorage so it can be replayed after
+  // game state is restored (the retry closure itself is destroyed on unmount).
   const handleAuthError = useCallback(
-    (e: unknown, retry?: () => void): boolean => {
+    (
+      e: unknown,
+      retry?: () => void,
+      action?: PendingResumeAction,
+    ): boolean => {
       if (e instanceof AuthRequiredError) {
         authResolveRef.current = retry ?? null;
+        pendingResumeActionRef.current = action ?? null;
         setAuthModalOpen(true);
         return true;
       }
       return false;
+    },
+    [],
+  );
+
+  // Snapshot the in-progress game just before an OAuth full-page redirect so
+  // the play page can resume the exact scene/beat on return. Reads only refs
+  // (stable across renders), so an empty dep list is safe. Mirrors the
+  // homepage's persistPendingStart + quota-fallback degradation.
+  const persistPlayResume = useCallback((): void => {
+    const sess = sessionRef.current;
+    const beat = currentBeatRef.current;
+    const imageOriginalUrl = lastImageOriginalUrlRef.current;
+    if (!sess || !beat || !imageOriginalUrl) return;
+    const snap: PlayResumeSnapshot = {
+      session: sess,
+      beatId: beat.id,
+      visitedBeats: [...visitedBeatsRef.current],
+      orientation: sess.orientation ?? "landscape",
+      imageOriginalUrl,
+      pendingAction: pendingResumeActionRef.current ?? undefined,
+    };
+    const tryWrite = (payload: PlayResumeSnapshot): boolean => {
+      try {
+        sessionStorage.setItem(PLAY_RESUME_KEY, JSON.stringify(payload));
+        return true;
+      } catch {
+        return false; // QuotaExceededError — try a lighter payload below
+      }
+    };
+    if (tryWrite(snap)) return;
+    // Drop the heaviest data-URL field (user-uploaded style ref, ~100KB) and
+    // retry. It only affects the Painter on FUTURE scenes, not the resumed
+    // scene, so losing it degrades gracefully. Voices are deliberately kept —
+    // preserving voice continuity matters more than the rare quota miss, and a
+    // typical session (remote-image URLs + a few ~160KB voice refs) fits well
+    // under sessionStorage's 5MB cap. If still too big, give up: resume is
+    // disabled for this trip and the page falls back to normal bootstrap.
+    tryWrite({ ...snap, session: { ...sess, styleReferenceImage: undefined } });
+  }, []);
+
+  // Restore an in-progress game from a PLAY_RESUME_KEY snapshot after an OAuth
+  // round-trip. Re-resolves the remote image URL to a fresh blob (the old blob
+  // was revoked on unmount), repopulates the runtime refs the handlers read,
+  // and hands any pending action to the deferred-replay effect. Throws on a
+  // corrupt snapshot so the caller can fall back to normal bootstrap.
+  const restorePlayResume = useCallback(
+    async (snap: PlayResumeSnapshot): Promise<void> => {
+      const last = snap.session.history[snap.session.history.length - 1];
+      if (!last?.scene) throw new Error("resume snapshot missing current scene");
+
+      setOrientation(snap.orientation);
+      visitedBeatsRef.current = [...snap.visitedBeats];
+      lastImageOriginalUrlRef.current = snap.imageOriginalUrl;
+
+      setSession(snap.session);
+      setCurrentScene(last.scene);
+      setCurrentBeatId(snap.beatId);
+
+      const blobUrl = await getOrCreateBlobUrl(snap.imageOriginalUrl);
+      const ready = waitForImageReady();
+      setImageUrl(blobUrl);
+      await ready;
+      setPhase("ready");
+      track("scene_reached", { scene_index: snap.session.history.length });
+
+      if (snap.pendingAction) setPendingReplayAction(snap.pendingAction);
     },
     [],
   );
@@ -1359,6 +1478,44 @@ function PlayInner() {
     if (startedRef.current) return;
     startedRef.current = true;
 
+    // ── OAuth resume ────────────────────────────────────────────────
+    // Returning from a Google/GitHub round-trip? The full-page redirect
+    // destroyed the in-memory Session; if we stashed a snapshot just before
+    // navigating away (persistPlayResume via AuthModal.onBeforeOAuth) and the
+    // user is now signed in, restore the exact scene/beat instead of
+    // re-bootstrapping from `?card=…` (which would restart the story). OTP
+    // login never writes a snapshot — its onSuccess retry keeps state
+    // in-memory.
+    if (AUTH_ENABLED) {
+      const resumeRaw = sessionStorage.getItem(PLAY_RESUME_KEY);
+      if (resumeRaw) {
+        sessionStorage.removeItem(PLAY_RESUME_KEY);
+        // Let the async resume run; on failure it relinquishes the slot so the
+        // normal bootstrap below re-runs. Either way return here — the sync
+        // body must not run while the OAuth return is being reconciled.
+        void (async () => {
+          try {
+            const sb = createSupabaseClient();
+            const { data } = await sb.auth.getUser();
+            if (!data.user) {
+              // OAuth failed/not signed in → fall back to normal bootstrap.
+              startedRef.current = false;
+              setRetryBootstrap((n) => n + 1);
+              return;
+            }
+            await restorePlayResume(
+              JSON.parse(resumeRaw) as PlayResumeSnapshot,
+            );
+          } catch {
+            // Corrupt snapshot / network — relinquish and bootstrap normally.
+            startedRef.current = false;
+            setRetryBootstrap((n) => n + 1);
+          }
+        })();
+        return;
+      }
+    }
+
     // 三条进入路径：
     //   ?card=<m0..f31>      → 首页精选卡，直接从 /home/firstact/{name}.json
     //                          静态文件加载（已在构建期 prebake，免一切引擎调用）
@@ -1579,7 +1736,30 @@ function PlayInner() {
           setError(String(e));
         }
       });
-  }, [params, router]);
+  }, [params, router, retryBootstrap, restorePlayResume]);
+
+  // ── Deferred replay of the action that hit 401 (OAuth resume) ─────────
+  // After restorePlayResume commits the restored session/scene/beat, dispatch
+  // the pending action so the player lands exactly where they were headed
+  // (seamless continuation). Runs once the restored state is interactive,
+  // then clears the slot. Mirrors the homepage's autoStartPending pattern.
+  useEffect(() => {
+    if (!pendingReplayAction) return;
+    if (phase !== "ready" || !session || !currentScene) return;
+    const action = pendingReplayAction;
+    setPendingReplayAction(null);
+    if (action.kind === "choice") {
+      onSelectChoice(action.choice);
+    } else if (action.kind === "freeform") {
+      void onFreeformInput(action.text);
+    } else {
+      void onBackgroundClick({ x: action.x, y: action.y });
+    }
+    // onSelectChoice/onFreeformInput/onBackgroundClick are stable inner
+    // functions keyed off the restored state; listing them would re-fire on
+    // every render, so we intentionally scope deps to the readiness gate.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingReplayAction, phase, session, currentScene]);
 
   // ── Prefetch on scene entry: L1 + recursive L2/L3 for must-pass ──────
   useEffect(() => {
@@ -1647,6 +1827,7 @@ function PlayInner() {
     visitedForCurrent: string[],
     exitLabel: string,
     retry?: () => void,
+    action?: PendingResumeAction,
   ) {
     const sceneT0 = Date.now();
     setPhase("transitioning");
@@ -1706,7 +1887,7 @@ function PlayInner() {
         setPhase("ready");
         return;
       }
-      if (!handleAuthError(e, retry)) {
+      if (!handleAuthError(e, retry, action)) {
         trackPlayError("scene", e, sceneT0);
         setError(String(e));
       }
@@ -1903,8 +2084,13 @@ function PlayInner() {
 
     const cached = consumeChoice(poolRef.current, choice.id);
     if (cached) {
-      void performSceneTransition(cached, exit, visited, choice.label, () =>
-        onSelectChoice(choice),
+      void performSceneTransition(
+        cached,
+        exit,
+        visited,
+        choice.label,
+        () => onSelectChoice(choice),
+        { kind: "choice", choice },
       );
       return;
     }
@@ -1930,8 +2116,13 @@ function PlayInner() {
       return data;
     })();
 
-    void performSceneTransition(promise, exit, visited, choice.label, () =>
-      onSelectChoice(choice),
+    void performSceneTransition(
+      promise,
+      exit,
+      visited,
+      choice.label,
+      () => onSelectChoice(choice),
+      { kind: "choice", choice },
     );
   }
 
@@ -2037,9 +2228,10 @@ function PlayInner() {
         visited,
         decision.freeformAction,
         () => onFreeformInput(text),
+        { kind: "freeform", text },
       );
     } catch (e) {
-      if (!handleAuthError(e, () => onFreeformInput(text))) {
+      if (!handleAuthError(e, () => onFreeformInput(text), { kind: "freeform", text })) {
         trackPlayError("freeform", e, freeformT0);
         setError(String(e));
       }
@@ -2146,10 +2338,11 @@ function PlayInner() {
           visited,
           decision.intent.freeformAction,
           () => onBackgroundClick(click),
+          { kind: "background-click", x: click.x, y: click.y },
         );
       }
     } catch (e) {
-      if (!handleAuthError(e, () => onBackgroundClick(click))) {
+      if (!handleAuthError(e, () => onBackgroundClick(click), { kind: "background-click", x: click.x, y: click.y })) {
         trackPlayError("vision", e, visionT0);
         setError(String(e));
       }
@@ -2259,13 +2452,16 @@ function PlayInner() {
               setAuthModalOpen(false);
               // User dismissed login — drop the retry, don't re-run the action.
               authResolveRef.current = null;
+              pendingResumeActionRef.current = null;
             }}
             onSuccess={() => {
               setAuthModalOpen(false);
               const retry = authResolveRef.current;
               authResolveRef.current = null;
+              pendingResumeActionRef.current = null;
               retry?.();
             }}
+            onBeforeOAuth={persistPlayResume}
           />
         )}
       </div>
@@ -2457,13 +2653,16 @@ function PlayInner() {
             setAuthModalOpen(false);
             // User dismissed login — drop the retry, don't re-run the action.
             authResolveRef.current = null;
+            pendingResumeActionRef.current = null;
           }}
           onSuccess={() => {
             setAuthModalOpen(false);
             const retry = authResolveRef.current;
             authResolveRef.current = null;
+            pendingResumeActionRef.current = null;
             retry?.();
           }}
+          onBeforeOAuth={persistPlayResume}
         />
       )}
     </div>
