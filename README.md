@@ -239,4 +239,4 @@ InfiPlot 会与四类模型供应商通信。**文本（Text）和视觉（Visio
 
 本项目基于 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) 协议开源。
 
-欢迎贡献！外部贡献者在提交 PR 前，需要先签署一次我们的《贡献者许可协议》（CLA）——详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [CLA.md](CLA.md)（[中文参考译文](CLA.zh.md)）。
+欢迎贡献！外部贡献者在 PR 合并前，需要签署一次我们的《贡献者许可协议》（CLA）——详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [CLA.md](CLA.md)（[中文参考译文](CLA.zh.md)）。

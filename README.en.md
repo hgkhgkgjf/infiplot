@@ -228,4 +228,4 @@ See the [Bring-your-own voice Key guide](docs/xiaomi-tts-key.md) for how to obta
 
 This project is open-sourced under [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html).
 
-Contributions are welcome! External contributors must sign our Contributor License Agreement (CLA) once before a PR can be merged — see [CONTRIBUTING.md](CONTRIBUTING.md) and [CLA.md](CLA.md).
+Contributions are welcome! External contributors must sign our Contributor License Agreement (CLA) once before a PR can be merged — see [CONTRIBUTING.md](CONTRIBUTING.md) and [CLA.md](CLA.md). Sign it directly in the PR via a comment after opening it; no separate step needed beforehand.
