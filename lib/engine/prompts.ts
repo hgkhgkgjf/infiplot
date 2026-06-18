@@ -10,6 +10,60 @@ import type {
 import { formatStepfunCatalogForPrompt } from "@infiplot/tts-client";
 
 // ══════════════════════════════════════════════════════════════════════
+//  Output-language directive — appended to user messages so the AI's
+//  GENERATED dialogue, narration, and voice-design text follow the UI
+//  locale the player picked. Returns "" for zh-CN (the prompts' native
+//  language) so existing sessions behave byte-identically to before.
+//
+//  We intentionally append this as a TRAILING one-liner rather than
+//  rewriting the system prompts in the target language — the prompts body
+//  is the cacheable / reviewed / future-edit-friendly asset, and a single
+//  trailing directive is enough for modern LLMs to switch their output
+//  language while still receiving Chinese instructions.
+// ══════════════════════════════════════════════════════════════════════
+const LANG_LABELS: Record<string, string> = {
+  "zh-CN": "简体中文",
+  "zh-TW": "繁體中文",
+  "zh-HK": "繁體中文（香港）",
+  en: "English",
+  ja: "日本語",
+  ko: "한국어",
+  es: "Español",
+  fr: "Français",
+  de: "Deutsch",
+  "pt-BR": "Português (Brasil)",
+  pt: "Português",
+  ru: "Русский",
+  it: "Italiano",
+  vi: "Tiếng Việt",
+  th: "ภาษาไทย",
+  id: "Bahasa Indonesia",
+  tr: "Türkçe",
+  pl: "Polski",
+  nl: "Nederlands",
+  uk: "Українська",
+  hi: "हिन्दी",
+  cs: "Čeština",
+};
+
+/**
+ * Returns a one-line Chinese instruction telling the LLM to produce its
+ * free-form output (dialogue, narration, voice-design text) in the player's
+ * selected UI language. Returns an empty string for zh-CN sessions — those
+ * are the prompts' native language and need no directive.
+ *
+ * Always returns Chinese regardless of session.language because the system
+ * prompts are Chinese; the directive instructs the model to *output* in the
+ * target language, not to read prompts in it.
+ */
+export function buildLanguageDirective(language: string | undefined): string {
+  if (!language || language === "zh-CN") return "";
+  const label = LANG_LABELS[language];
+  if (!label) return "";
+  return `\n【输出语言】你产出的所有自然语言内容（对白台词 line / 旁白 narration / sceneSummary / storyState 各字段 / voiceDescription / lineDelivery 等）必须使用「${label}」；JSON 字段名、sceneKey、英文 visualDescription / painting prompt 仍按各 agent 既有规则。`;
+}
+
+// ══════════════════════════════════════════════════════════════════════
 //  Multi-agent scene generation pipeline:
 //    Architect (总编剧)    — ONE-TIME at session start: the story bible
 //                           (protagonist / logline / genre / opening hook /
@@ -141,6 +195,8 @@ export function buildArchitectUserMessage(session: Session): string {
   parts.push(
     "\n请据此产出这部交互剧的故事档案（story bible），严格以 JSON 格式返回。",
   );
+  const langDirective = buildLanguageDirective(session.language);
+  if (langDirective) parts.push(langDirective);
   return parts.join("\n");
 }
 
@@ -534,6 +590,8 @@ export function buildWriterPlanUserMessage(session: Session): string {
   parts.push(
     '\n现在**只规划本场景的骨架**（不要写 beats 台词）：给出 sceneSummary（画面感强、含开场钩子）、sceneKey、entryBeatId、本场景会出场的全部角色 cast、以及入口 beat 的 entrySpeaker 与 entryActiveCharacters。严格以 JSON 格式返回。',
   );
+  const langDirective = buildLanguageDirective(session.language);
+  if (langDirective) parts.push(langDirective);
   return parts.join("\n");
 }
 
@@ -577,6 +635,8 @@ export function buildWriterBeatsUserMessage(
   parts.push(
     "\n把上面的规划展开成完整的 beats[]（入口 beat 用规划的 entryBeatId / speaker / 登场角色），写完后更新 storyStatePatch。严格以 JSON 格式返回。",
   );
+  const langDirective = buildLanguageDirective(session.language);
+  if (langDirective) parts.push(langDirective);
   return parts.join("\n");
 }
 
@@ -737,6 +797,15 @@ export function buildCharacterDesignerUserMessage(
   parts.push(
     "\n请为该角色同时设计 visualDescription（英文，必须覆盖 system 中的 6 大要素清单）和 voiceDescription（中文），严格以 JSON 格式返回。",
   );
+  // When the player picked a non-zh-CN UI language, override the
+  // system-prompt's "中文" voiceDescription guidance: the description text
+  // flows into MiMo's voice-design, which gives better prosody when the
+  // description is written in the target output language. (StepFun's 32
+  // preset voices are fixed Chinese timbres, but voiceDescription is still
+  // used as documentation + stepfunVoiceId picking context — keeping it
+  // in the player's language is consistent.)
+  const langDirective = buildLanguageDirective(session.language);
+  if (langDirective) parts.push(langDirective);
   return parts.join("\n");
 }
 
@@ -1061,6 +1130,8 @@ export function buildInsertBeatUserMessage(
 
   parts.push(`\n玩家此刻的自由动作：${freeformAction}`);
   parts.push("\n请生成一个有实质回应的 beat，严格以 JSON 格式返回。");
+  const langDirective = buildLanguageDirective(session.language);
+  if (langDirective) parts.push(langDirective);
   return parts.join("\n");
 }
 

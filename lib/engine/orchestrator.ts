@@ -64,6 +64,7 @@ export async function startSession(
     styleReferenceImage: req.styleReferenceImage?.trim() || undefined,
     orientation: coerceOrientation(req.orientation),
     playerName: req.playerName?.trim() || undefined,
+    language: req.language?.trim() || undefined,
   };
 
   // Stage 0 — Architect (+ optional auto style selection, in parallel).

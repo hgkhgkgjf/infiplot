@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Inter } from "next/font/google";
 import { Analytics } from "@/components/Analytics";
+import { I18nProvider } from "@/lib/i18n/client";
 import "./globals.css";
 
 // Editorial fonts: drive tailwind `font-serif`/`font-sans` via
@@ -53,7 +54,7 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-cream-50 text-clay-900 font-sans antialiased min-h-screen overflow-x-hidden">
-        {children}
+        <I18nProvider>{children}</I18nProvider>
         <Analytics />
       </body>
     </html>

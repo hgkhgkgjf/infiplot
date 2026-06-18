@@ -20,6 +20,73 @@ import { AUTH_ENABLED } from "@/lib/supabase/config";
 import { isAuthed, writeResumeSnapshot } from "@/lib/authResume";
 import { AuthModal } from "@/components/AuthModal";
 import { UserChip } from "@/components/UserChip";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useI18n } from "@/lib/i18n/client";
+
+// Option value → i18n key suffix maps. The Chinese strings from lib/options.ts
+// stay as the underlying identifier (so analytics unions and STYLE_MAP keys
+// stay byte-stable); we look up the display label per locale at render time.
+const GENDER_KEYS: Record<Gender, "male" | "female" | "x"> = {
+  男性向: "male",
+  女性向: "female",
+  X: "x",
+};
+
+const ART_STYLE_KEYS: Record<string, string> = {
+  "自动": "auto",
+  "自定义风格": "custom",
+  "京阿尼": "kyoani",
+  "新海诚": "shinkai",
+  "吉卜力": "ghibli",
+  "黑白漫画": "manga",
+  "真实": "realistic",
+  "3D 动画": "3d",
+  "水墨": "ink",
+  "仙侠玄幻": "xianxia",
+  "浮世绘": "ukiyoe",
+  "敦煌壁画": "dunhuang",
+  "古典油画": "oil",
+  "莫奈": "monet",
+  "水彩": "watercolor",
+  "细密画": "miniature",
+  "镶嵌画": "mosaic",
+  "彩绘玻璃": "stainedGlass",
+  "赛博朋克": "cyberpunk",
+  "蒸汽朋克": "steampunk",
+  "哥特": "gothic",
+  "废土": "wasteland",
+  "暗黑童话": "darkFairytale",
+  "都市幻想": "urbanFantasy",
+  "像素风": "pixel",
+  "蒸汽波": "vaporwave",
+  "矢量插画": "vector",
+  "低多边形": "lowpoly",
+  "波普艺术": "popart",
+  "故障艺术": "glitch",
+  "彩铅": "pencil",
+  "手绘素描": "sketch",
+  "剪纸艺术": "papercut",
+  "儿童绘本": "children",
+  "儿童涂鸦": "crayon",
+  "黏土手工": "clay",
+};
+
+const PLOT_STYLE_KEYS: Record<string, string> = {
+  "平铺直叙": "straightforward",
+  "多线转折": "twist",
+  "悬疑烧脑": "suspense",
+  "治愈日常": "healing",
+};
+
+const PACING_KEYS: Record<string, string> = {
+  "慢热细腻": "slow",
+  "紧凑爽快": "fast",
+};
+
+const VOICE_KEYS: Record<string, string> = {
+  "关闭": "off",
+  "开启": "on",
+};
 
 /* ============================================================================
    InfiPlot · 首页（编辑式视觉风格 · 居中构图，呼应低保真原型）
@@ -30,39 +97,26 @@ import { UserChip } from "@/components/UserChip";
    ========================================================================== */
 
 
-const EXAMPLE_PHRASES: Record<Gender, string[]> = {
-  男性向: [
-    "从小一起长大的青梅竹马，突然红着脸向我告白",
-    "一觉醒来，班上的女生好像都偷偷喜欢上了我",
-    "三年之期已到，原来我是富家公子，报仇时机已到",
-    "我带着无限 Token 穿越回了互联网诞生前夕……",
-  ],
-  女性向: [
-    "穿越成将军府的废物嫡女，冷面摄政王却独宠我一人",
-    "重生回到分手前夜，这一次换我先放手",
-    "一觉醒来成了乙游里的恶役千金，要躲开所有死亡结局",
-  ],
-  X: [
-    "时空裂隙开启，多个平行世界的自己突然出现在眼前",
-    "记忆宫殿里，那些被遗忘的碎片正在重组为新的故事",
-    "一场无限流游戏开始，所有人都有唯一的通关机会",
-    "系统提示：你的选择将决定整个宇宙的命运走向",
-  ],
-};
+// EXAMPLE_PHRASES is now sourced from i18n (home.examples.{male,female,x}).
+// The Chinese values below are kept as gender identifiers only — they're the
+// underlying session value and flow into analytics as a stable literal union.
 
 type Opt = {
   label: string;
   items: string[];
   defaultIndex?: number;
   modal?: boolean;
+  // i18n key suffixes — used to render localized display labels for each item.
+  itemKey: string;
+  labelKey: string;
 };
 
 const OPTS: Opt[] = [
-  { label: "性向", items: [...GENDERS] },
-  { label: "绘画风格", modal: true, items: [...ART_STYLES] },
-  { label: "剧情风格", items: [...PLOT_STYLES], defaultIndex: 1 },
-  { label: "语音配音", items: ["关闭", "开启"], defaultIndex: 1 },
-  { label: "内容节奏", items: [...PACINGS], defaultIndex: 1 },
+  { label: "性向", items: [...GENDERS], labelKey: "home.options.gender", itemKey: "home.genders" },
+  { label: "绘画风格", modal: true, items: [...ART_STYLES], labelKey: "home.options.artStyle", itemKey: "home.artStyles" },
+  { label: "剧情风格", items: [...PLOT_STYLES], defaultIndex: 1, labelKey: "home.options.plotStyle", itemKey: "home.plotStyles" },
+  { label: "语音配音", items: ["关闭", "开启"], defaultIndex: 1, labelKey: "home.options.voice", itemKey: "home.voiceOptions" },
+  { label: "内容节奏", items: [...PACINGS], defaultIndex: 1, labelKey: "home.options.pacing", itemKey: "home.pacings" },
 ];
 
 type StoryContent = { title: string; outline: string; style: string; tags: string[] };
@@ -822,6 +876,7 @@ function StoryCard({
 function CategorySelect({
   label,
   items,
+  itemLabels,
   value,
   open,
   onToggle,
@@ -829,6 +884,7 @@ function CategorySelect({
 }: {
   label: string;
   items: string[];
+  itemLabels: string[];
   value: number;
   open: boolean;
   onToggle: () => void;
@@ -843,7 +899,7 @@ function CategorySelect({
       >
         <span className="text-[10px] smallcaps text-clay-500">{label}</span>
         <span className={"font-serif text-base md:text-lg " + (open ? "text-ember-500" : "text-clay-900")}>
-          {items[value]}
+          {itemLabels[value] ?? items[value]}
         </span>
         <i
           className={
@@ -864,7 +920,7 @@ function CategorySelect({
                 (i === value ? "text-ember-500" : "text-clay-700")
               }
             >
-              {it}
+              {itemLabels[i] ?? it}
               {i === value && <i className="fa-solid fa-check text-[10px]" />}
             </button>
           ))}
@@ -914,6 +970,7 @@ async function extractStylePromptFromImage(resized: string): Promise<string> {
 
 function StyleModal({
   items,
+  itemLabels,
   value,
   onPick,
   onClose,
@@ -924,6 +981,7 @@ function StyleModal({
   onRequireAuth,
 }: {
   items: string[];
+  itemLabels: string[];
   value: number;
   onPick: (i: number) => void;
   onClose: () => void;
@@ -933,6 +991,7 @@ function StyleModal({
   setCustomStyleRefImage: (s: string) => void;
   onRequireAuth: () => void;
 }) {
+  const { t } = useI18n();
   const [q, setQ] = useState("");
   const [shown, setShown] = useState(false);
   const [view, setView] = useState<"grid" | "custom">("grid");
@@ -1011,13 +1070,13 @@ function StyleModal({
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const r = new FileReader();
       r.onload = () => resolve(String(r.result));
-      r.onerror = () => reject(new Error("读取文件失败"));
+      r.onerror = () => reject(new Error(t("home.styleModal.fileReadError")));
       r.readAsDataURL(file);
     });
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
       const i = new Image();
       i.onload = () => resolve(i);
-      i.onerror = () => reject(new Error("无法解码图片"));
+      i.onerror = () => reject(new Error(t("home.styleModal.imageDecodeError")));
       i.src = dataUrl;
     });
     const MAX_DIM = 512;
@@ -1040,7 +1099,7 @@ function StyleModal({
   const handleUploadStyleImage = async (file: File) => {
     setParseError(null);
     if (!file.type.startsWith("image/")) {
-      setParseError("只支持图片文件");
+      setParseError(t("home.styleModal.uploadError"));
       return;
     }
     setParsing(true);
@@ -1058,12 +1117,12 @@ function StyleModal({
         return;
       }
       const stylePrompt = await extractStylePromptFromImage(resized);
-      if (!stylePrompt) throw new Error("视觉模型返回了空的风格描述");
+      if (!stylePrompt) throw new Error(t("home.styleModal.visionError"));
       setDraft(stylePrompt);
       setCustomStyleRefImage(resized);
       track("style_image_upload", { ok: true });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "解析失败";
+      const msg = err instanceof Error ? err.message : t("home.styleModal.parseError");
       setParseError(msg);
       track("style_image_upload", { ok: false });
     } finally {
@@ -1077,9 +1136,10 @@ function StyleModal({
   };
 
   const q2 = q.trim();
-  const list = items.map((name, i) => ({ name, i })).filter((x) => {
+  const list = items.map((name, i) => ({ name, label: itemLabels[i] ?? name, i })).filter((x) => {
     if (!q2) return true;
-    return x.name.toLowerCase().includes(q2.toLowerCase());
+    const needle = q2.toLowerCase();
+    return x.name.toLowerCase().includes(needle) || x.label.toLowerCase().includes(needle);
   });
   return (
     <div
@@ -1103,25 +1163,25 @@ function StyleModal({
                 type="button"
                 onClick={() => setView("grid")}
                 className="flex h-8 w-8 items-center justify-center rounded-sm text-clay-500 hover:bg-cream-100 hover:text-clay-900 transition-colors"
-                aria-label="返回"
+                aria-label={t("home.ui.back")}
               >
                 <i className="fa-solid fa-arrow-left text-sm" />
               </button>
-              <span className="font-serif text-xl md:text-2xl text-clay-900">自定义风格</span>
+              <span className="font-serif text-xl md:text-2xl text-clay-900">{t("home.styleModal.customTitle")}</span>
             </div>
           ) : (
             <>
               <div className="flex flex-1 flex-col">
-                <span className="font-serif text-xl md:text-2xl text-clay-900">选择绘画风格</span>
+                <span className="font-serif text-xl md:text-2xl text-clay-900">{t("home.styleModal.title")}</span>
                 <span className="hidden md:block text-[11px] text-clay-500 mt-1 tracking-wide">
-                  默认「自动」· 由 AI 根据故事自动匹配画风；选择「自定义风格」可输入描述或上传参考图
+                  {t("home.styleModal.subtitle")}
                 </span>
               </div>
               <div className="relative w-[150px] max-w-[40vw] md:w-[280px] md:max-w-[46vw]">
                 <input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="搜索风格…"
+                  placeholder={t("home.ui.searchPlaceholder")}
                   autoFocus
                   className="h-10 w-full rounded-sm border border-clay-900/15 bg-cream-100 pl-4 pr-10 font-sans text-sm text-clay-900 outline-none transition-colors focus:border-ember-500 placeholder:text-clay-400"
                 />
@@ -1132,7 +1192,7 @@ function StyleModal({
           <button
             type="button"
             onClick={close}
-            aria-label="关闭"
+            aria-label={t("home.ui.close")}
             className="text-xl leading-none text-clay-500 hover:text-clay-900 transition-colors"
           >
             <i className="fa-solid fa-xmark" />
@@ -1157,7 +1217,7 @@ function StyleModal({
               onChange={(e) => setDraft(e.target.value)}
               autoFocus
               rows={6}
-              placeholder={"描述你想要的画面风格，例如：\n梦幻水彩风格，柔和的色调，怀旧的氛围\n\n💡 提示：部分绘图模型对英文提示词效果更佳，建议先借助 AI 对话工具生成专业的英文风格描述，再粘贴到这里"}
+              placeholder={t("home.styleModal.customPlaceholder")}
               className="w-full flex-1 resize-y rounded-sm border border-clay-900/15 bg-cream-50 px-3 py-2.5 font-sans text-[13px] leading-relaxed text-clay-900 outline-none transition-colors focus:border-ember-500 placeholder:text-clay-400"
             />
             {parseError && (
@@ -1172,7 +1232,7 @@ function StyleModal({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={customStyleRefImage}
-                    alt="画风参考图"
+                    alt={t("home.styleModal.refImageAlt")}
                     className="h-8 w-8 shrink-0 rounded-sm border border-clay-900/10 object-cover"
                   />
                   <button
@@ -1181,14 +1241,14 @@ function StyleModal({
                     disabled={parsing}
                     className="font-sans text-[11px] text-clay-500 hover:text-ember-500 transition-colors disabled:opacity-50"
                   >
-                    换一张
+                    {t("home.styleModal.changeImage")}
                   </button>
                   <button
                     type="button"
                     onClick={() => removeStyleRefImage()}
                     className="font-sans text-[11px] text-clay-400 hover:text-clay-900 transition-colors"
                   >
-                    移除
+                    {t("home.styleModal.remove")}
                   </button>
                 </div>
               ) : (
@@ -1206,12 +1266,12 @@ function StyleModal({
                   {parsing ? (
                     <>
                       <i className="fa-solid fa-circle-notch fa-spin text-[11px]" />
-                      解析中…
+                      {t("home.styleModal.parsing")}
                     </>
                   ) : (
                     <>
                       <i className="fa-regular fa-image text-[11px]" />
-                      上传参考图
+                      {t("home.styleModal.uploadImage")}
                     </>
                   )}
                 </button>
@@ -1224,7 +1284,7 @@ function StyleModal({
                 }}
                 className="h-8 w-36 md:w-44 rounded-sm border border-clay-900/15 bg-cream-50 px-2 font-sans text-[12px] text-clay-700 outline-none transition-colors focus:border-ember-500"
               >
-                <option value="">从预设风格导入…</option>
+                <option value="">{t("home.styleModal.importFromPreset")}</option>
                 {Object.keys(STYLE_MAP).map((s) => (
                   <option key={s} value={s}>{s}</option>
                 ))}
@@ -1235,7 +1295,7 @@ function StyleModal({
                 onClick={() => setView("grid")}
                 className="rounded-sm border border-clay-900/15 px-4 py-1.5 font-sans text-xs text-clay-700 hover:border-clay-900/30 hover:text-clay-900 transition-colors"
               >
-                取消
+                {t("home.ui.cancel")}
               </button>
               <button
                 type="button"
@@ -1248,13 +1308,13 @@ function StyleModal({
                     : "bg-clay-900/20 text-clay-500 cursor-not-allowed")
                 }
               >
-                保存并选用
+                {t("home.ui.saveAndSelect")}
               </button>
             </div>
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 overflow-y-auto px-6 py-6 md:grid-cols-4 md:gap-4 md:px-8">
-            {list.map(({ name, i }) => {
+            {list.map(({ name, label, i }) => {
               const isCustom = name === "自定义风格";
               const thumb = STYLE_THUMB[name];
               return (
@@ -1288,20 +1348,20 @@ function StyleModal({
                   <div className="relative w-full overflow-hidden" style={{ paddingBottom: "100%" }}>
                     {thumb ? (
                       /* eslint-disable-next-line @next/next/no-img-element */
-                      <img src={thumb} alt={name} loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
+                      <img src={thumb} alt={label} loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
                     ) : (
                       <div className="absolute inset-0 bg-cream-100" />
                     )}
                   </div>
                   <span className={"block px-2 py-2 text-center font-serif text-sm " + (i === value ? "text-ember-500" : "text-clay-700")}>
-                    {name}
+                    {label}
                   </span>
                 </div>
               );
             })}
             {list.length === 0 && (
               <div className="col-span-full py-12 text-center font-serif text-sm text-clay-400">
-                没有匹配的风格
+                {t("home.ui.noMatchingStyle")}
               </div>
             )}
           </div>
@@ -1315,6 +1375,7 @@ function StyleModal({
 
 export default function HomePage() {
   const router = useRouter();
+  const { t, locale, tArray } = useI18n();
 
   const [sel, setSel] = useState<number[]>(OPTS.map((o) => o.defaultIndex ?? 0));
   const [open, setOpen] = useState<number>(-1);
@@ -1344,7 +1405,43 @@ export default function HomePage() {
   const paceRow = OPTS.findIndex((o) => o.label === "内容节奏");
   const genderIndex = sel[0] ?? 0;
   const gender = (OPTS[0]!.items[genderIndex] as Gender) ?? "男性向";
-  const phrases = EXAMPLE_PHRASES[gender];
+  // Display labels for each option category — localized at render time. The
+  // underlying `items` are kept as Chinese literal identifiers because they
+  // flow into analytics unions and `STYLE_MAP` keys.
+  const optItemLabels = OPTS.map((o) => {
+    if (o.itemKey === "home.genders") {
+      return o.items.map((v) => t(`home.genders.${GENDER_KEYS[v as Gender] ?? "male"}`));
+    }
+    if (o.itemKey === "home.artStyles") {
+      return o.items.map((v) => {
+        const k = ART_STYLE_KEYS[v];
+        return k ? t(`home.artStyles.${k}`) : v;
+      });
+    }
+    if (o.itemKey === "home.plotStyles") {
+      return o.items.map((v) => {
+        const k = PLOT_STYLE_KEYS[v];
+        return k ? t(`home.plotStyles.${k}`) : v;
+      });
+    }
+    if (o.itemKey === "home.pacings") {
+      return o.items.map((v) => {
+        const k = PACING_KEYS[v];
+        return k ? t(`home.pacings.${k}`) : v;
+      });
+    }
+    if (o.itemKey === "home.voiceOptions") {
+      return o.items.map((v) => {
+        const k = VOICE_KEYS[v];
+        return k ? t(`home.voiceOptions.${k}`) : v;
+      });
+    }
+    return o.items;
+  });
+  const optLabels = OPTS.map((o) => t(o.labelKey));
+  const phrasesKey = GENDER_KEYS[gender] ?? "male";
+  const phrases = tArray(`home.examples.${phrasesKey}`);
+  void locale;
   // 当前 Typewriter 闪动到第几句——start() 空输入时会拿它做默认故事种子，
   // 实现「所见即所玩」。切性向时重置，否则索引可能越界。
   const [phraseIdx, setPhraseIdx] = useState(0);
@@ -1590,13 +1687,13 @@ export default function HomePage() {
     setStoryImportError(null);
     if (!file) return;
     if (file.size <= 0) {
-      setStoryImportError("这个剧情文件是空的。");
+      setStoryImportError(t("home.errors.emptyFile"));
       return;
     }
     const isJson = file.name.toLowerCase().endsWith(".json") || file.type === "application/json";
     const maxImportBytes = isJson ? 12_000_000 : 13_000_000;
     if (file.size > maxImportBytes) {
-      setStoryImportError("剧情文件太大，无法载入。");
+      setStoryImportError(t("home.errors.fileTooLarge"));
       return;
     }
     try {
@@ -1610,17 +1707,17 @@ export default function HomePage() {
         });
         if (!r.ok) {
           const j = (await r.json().catch(() => ({}))) as { error?: string };
-          throw new Error(j.error ?? "剧情文件解包失败。");
+          throw new Error(j.error ?? t("home.errors.unpackFailed"));
         }
         const j = (await r.json()) as { docStr?: unknown };
-        if (typeof j.docStr !== "string") throw new Error("剧情文件解包失败。");
+        if (typeof j.docStr !== "string") throw new Error(t("home.errors.unpackFailed"));
         text = j.docStr;
       }
       const doc = parseStoryShareDoc(JSON.parse(text));
       window.sessionStorage.setItem(STORY_SHARE_STORAGE_KEY, JSON.stringify(doc));
       router.push("/play?share=1");
     } catch (e) {
-      setStoryImportError(e instanceof Error ? e.message : "剧情文件解析失败。");
+      setStoryImportError(e instanceof Error ? e.message : t("home.errors.parseFailed"));
     } finally {
       if (storyImportRef.current) storyImportRef.current.value = "";
     }
@@ -1664,14 +1761,15 @@ export default function HomePage() {
           Infi<em className="italic font-light text-ember-500">Plot</em>
         </span>
         <div className="flex items-center gap-4 md:gap-5">
+          <LanguageSwitcher variant="compact" />
           <button
             type="button"
             onClick={() => {
               setSettingsTab("general");
               setSettingsOpen(true);
             }}
-            aria-label="设置"
-            title="设置"
+            aria-label={t("home.ui.settings")}
+            title={t("home.ui.settings")}
             className="text-base text-clay-500 hover:text-ember-500 transition-colors"
           >
             <i className="fa-solid fa-gear" />
@@ -1702,7 +1800,7 @@ export default function HomePage() {
       <section className="px-6 md:px-16 pt-12 md:pt-24 pb-10 md:pb-14">
         <div className="mx-auto max-w-[1100px] text-center">
           <h1 className="font-serif font-light text-[32px] md:text-[56px] leading-[1.12] tracking-tight text-clay-900">
-            今天想体验什么故事？
+            {t("home.hero.title")}
           </h1>
 
           {/* prompt 输入（居中） */}
@@ -1756,14 +1854,14 @@ export default function HomePage() {
                 >
                   <i className="fa-solid fa-file-import text-sm" />
                   <span className="pointer-events-none absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-clay-900 px-2 py-1 font-sans text-[11px] text-cream-50 opacity-0 transition-opacity group-hover:opacity-100">
-                    载入剧情
+                    {t("home.ui.loadStory")}
                   </span>
                 </button>
                 <button
                   type="submit"
                   className="inline-flex items-center gap-2 rounded-sm bg-clay-900 px-5 py-2 md:py-2.5 font-sans text-sm md:text-[15px] text-cream-50 transition-colors hover:bg-ember-500"
                 >
-                  开始
+                  {t("home.ui.start")}
                   <i className="fa-solid fa-arrow-right text-xs" />
                 </button>
               </div>
@@ -1775,7 +1873,7 @@ export default function HomePage() {
             )}
             {prompt && (
               <p className="mt-2 text-right text-xs text-clay-400">
-                Enter 发送 · Shift+Enter 换行
+                {t("home.hero.enterHint")}
               </p>
             )}
           </form>
@@ -1785,8 +1883,9 @@ export default function HomePage() {
             {OPTS.map((o, r) => (
               <div data-cat key={r} className="text-left">
                 <CategorySelect
-                  label={o.label}
+                  label={optLabels[r] ?? o.label}
                   items={o.items}
+                  itemLabels={optItemLabels[r] ?? o.items}
                   value={sel[r] ?? 0}
                   open={open === r}
                   onToggle={() => {
@@ -1810,16 +1909,14 @@ export default function HomePage() {
           {/* 使用提示：可被用户永久关闭（localStorage:infiplot:hintClosed） */}
           {!hintClosed && (
             <div className="relative mx-auto mt-10 md:mt-12 max-w-[640px] rounded-sm border border-clay-900/10 bg-cream-100/50 px-5 md:px-8 py-3.5">
-              <p className="font-serif text-[13px] md:text-sm leading-relaxed text-clay-500">
-                输入想法、配置风格，点击「开始」即可游玩{AUTH_ENABLED && "（测试期间，登录即可免费畅玩）"}；也可以从下方精选故事集挑一篇快速体验{" "}
-                <em className="not-italic text-ember-500">InfiPlot</em>。
-                点击「<span className="inline-flex items-center gap-1 text-ember-500"><i className="fa-solid fa-gear text-[10px]" />设置</span>」还能填入你的名字，以及你自己的文本、绘图、识图模型和配音
-                Key——全部只存在本地浏览器，体验更稳定。
-              </p>
+              <p
+                className="font-serif text-[13px] md:text-sm leading-relaxed text-clay-500"
+                dangerouslySetInnerHTML={{ __html: t("home.hint.text", { authEnabled: AUTH_ENABLED }) }}
+              />
               <button
                 type="button"
                 onClick={closeHint}
-                aria-label="不再显示此提示"
+                aria-label={t("home.hint.closeAriaLabel")}
                 className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full text-clay-400 transition-colors hover:bg-clay-900/5 hover:text-clay-700"
               >
                 <i className="fa-solid fa-xmark text-xs" />
@@ -1862,23 +1959,23 @@ export default function HomePage() {
         <div className="mx-auto max-w-3xl text-center mb-14 md:mb-20">
           <p className="font-serif text-clay-800 text-xl md:text-2xl leading-[1.7]">
             <b className="font-medium text-clay-900">InfiPlot</b>{" "}
-            是一款用 AI 实时生成内容的交互式剧情游戏 —— 图片、语音与剧情分支都在游玩过程中即时生成。
+            {t("home.about.description")}
           </p>
         </div>
 
         <div className="mx-auto grid max-w-4xl grid-cols-1 gap-y-10 text-center md:grid-cols-3 md:gap-x-10">
           <div>
-            <p className="text-[10px] smallcaps text-clay-500 mb-3">团 队</p>
+            <p className="text-[10px] smallcaps text-clay-500 mb-3">{t("home.about.team")}</p>
             <p className="font-serif italic text-clay-700 text-base leading-relaxed">
-              我们来自清华大学、兰州大学等高校，希望探索多模态模型在「直接生成图片、视频」这类 <span className="not-italic">oneshot</span> 能力之外，更多的可能性。本项目目前仍处于早期阶段，我们还在招募成员，如果你也感兴趣，欢迎联系我们，期待你的加入。
+              {t("home.about.teamText")}
             </p>
           </div>
 
           <div>
-            <p className="text-[10px] smallcaps text-clay-500 mb-3">联 系 方 式</p>
+            <p className="text-[10px] smallcaps text-clay-500 mb-3">{t("home.about.contact")}</p>
             <p className="font-serif text-clay-700 text-base leading-relaxed">
               <span className="block mb-2">
-                邮箱{" "}
+                {t("home.about.email")}{" "}
                 <a
                   href="mailto:hi@infiplot.com"
                   className="text-ember-500 hover:text-ember-400 transition-colors"
@@ -1896,7 +1993,7 @@ export default function HomePage() {
                 <span className="font-sans text-sm">@yzh_im</span>
               </a>
             </p>
-            <p className="text-[10px] smallcaps text-clay-500 mb-3 mt-7">开 源 地 址</p>
+            <p className="text-[10px] smallcaps text-clay-500 mb-3 mt-7">{t("home.about.openSource")}</p>
             <a
               href="https://github.com/zonghaoyuan/infiplot"
               target="_blank"
@@ -1909,55 +2006,37 @@ export default function HomePage() {
           </div>
 
           <div>
-            <p className="text-[10px] smallcaps text-clay-500 mb-3">内 测 用 户 群</p>
+            <p className="text-[10px] smallcaps text-clay-500 mb-3">{t("home.about.betaUsers")}</p>
             <img
               src="/qq-group.webp"
-              alt="InfiPlot 公测交流群 QQ 群二维码（群号 575404333）"
+              alt={t("home.about.qqGroupAlt")}
               width={760}
               height={760}
               loading="lazy"
               className="mx-auto mb-3 w-32 max-w-full rounded-sm border border-clay-900/10 shadow-sm shadow-clay-900/5"
             />
             <p className="font-serif text-clay-700 text-base leading-relaxed">
-              QQ群号：
+              {t("home.about.qqGroupLabel")}
               <span className="font-sans text-sm text-clay-900">575404333</span>
             </p>
           </div>
         </div>
 
         <div className="hairline-full w-full mt-14 md:mt-20 mb-12 md:mb-16" />
-        <p className="mx-auto max-w-3xl text-center font-sans text-xs md:text-[13px] leading-[1.85] text-clay-500">
-          公测期间本产品可免费使用，但稳定性可能会随并发用户数量而有波动。
-          <br />
-          公测期间生成的内容不会在服务器上保存。如需留存，请在游玩结束后使用导出图集或分享剧情功能保存您的游玩体验。
-          <br />
-          AI 生成的内容不代表本团队立场。
-          {analyticsOn && (
-            <>
-              <br />
-              本站使用开源的{" "}
-              <a
-                href="https://umami.is/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline decoration-clay-900/20 underline-offset-2 transition-colors hover:text-clay-700"
-              >
-                Umami
-              </a>{" "}
-              进行隐私友好的匿名访问与交互统计：不使用 Cookie、不收集个人信息、不发送任何您输入的内容、不做跨站追踪。
-            </>
-          )}
-        </p>
+        <p
+          className="mx-auto max-w-3xl text-center font-sans text-xs md:text-[13px] leading-[1.85] text-clay-500"
+          dangerouslySetInnerHTML={{ __html: t("home.about.legalNotice", { analyticsOn }) }}
+        />
       </section>
 
       <footer className="mx-auto w-full max-w-[1640px] px-6 md:px-16 pb-10 mt-auto">
         <div className="hairline-full w-full mb-5" />
         <div className="flex flex-col items-center gap-2 text-[10px] smallcaps text-clay-500">
-          <span>© 2026 InfiPlot. All rights reserved.</span>
+          <span>{t("home.about.copyright")}</span>
           <span className="flex items-center gap-3 normal-case tracking-normal text-[11px]">
-            <a href="/privacy" className="hover:text-ember-500 transition-colors">隐私政策</a>
+            <a href="/privacy" className="hover:text-ember-500 transition-colors">{t("home.about.privacyPolicy")}</a>
             <span className="text-clay-300">·</span>
-            <a href="/terms" className="hover:text-ember-500 transition-colors">服务条款</a>
+            <a href="/terms" className="hover:text-ember-500 transition-colors">{t("home.about.terms")}</a>
           </span>
         </div>
       </footer>
@@ -1965,6 +2044,7 @@ export default function HomePage() {
       {styleOpen && styleRow >= 0 && (
         <StyleModal
           items={OPTS[styleRow]!.items}
+          itemLabels={optItemLabels[styleRow] ?? OPTS[styleRow]!.items}
           value={sel[styleRow] ?? 0}
           onPick={(i) => {
             track("art_style_select", { style: ART_STYLES[i] ?? "自动" });

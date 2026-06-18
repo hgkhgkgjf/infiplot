@@ -57,6 +57,7 @@ import { AUTH_ENABLED } from "@/lib/supabase/config";
 import { writeResumeSnapshot, consumeResumeSnapshot } from "@/lib/authResume";
 import { AuthModal } from "@/components/AuthModal";
 import { UserChip } from "@/components/UserChip";
+import { useI18n } from "@/lib/i18n/client";
 
 const MUTED_STORAGE_KEY = "infiplot:muted";
 // One-shot snapshot of in-progress game state, written just before an OAuth
@@ -602,6 +603,7 @@ function getConnectionType(): "4g" | "3g" | "2g" | "slow-2g" | "unknown" {
 function PlayInner() {
   const router = useRouter();
   const params = useSearchParams();
+  const { t, locale } = useI18n();
 
   const [phase, setPhase] = useState<Phase>("loading-first");
   const [session, setSession] = useState<Session | null>(null);
@@ -1362,7 +1364,7 @@ function PlayInner() {
 
     let audioByBeatId: Record<string, string> = {};
     try {
-      setExportProgress({ done: 0, total: 0, label: "正在准备配音" });
+      setExportProgress({ done: 0, total: 0, label: t("play.exportProgress.preparingVoice") });
       audioByBeatId = await collectBeatAudioForExport({
         session: s,
         beatAudioMap,
@@ -1371,7 +1373,7 @@ function PlayInner() {
         byoVoiceCache: provisionedVoicesRef.current,
         prebakedAudio: prebakedAudioRef.current,
         onProgress: (done, total) =>
-          setExportProgress({ done, total, label: "正在准备配音" }),
+          setExportProgress({ done, total, label: t("play.exportProgress.preparingVoice") }),
       });
     } catch {
       // best-effort — even if the collector throws, the gallery without audio
@@ -1425,7 +1427,7 @@ function PlayInner() {
 
     let audioByBeatId: Record<string, string> = {};
     try {
-      setExportProgress({ done: 0, total: 0, label: "正在准备配音" });
+      setExportProgress({ done: 0, total: 0, label: t("play.exportProgress.preparingVoice") });
       audioByBeatId = await collectBeatAudioForExport({
         session: s,
         beatAudioMap,
@@ -1434,7 +1436,7 @@ function PlayInner() {
         byoVoiceCache: provisionedVoicesRef.current,
         prebakedAudio: prebakedAudioRef.current,
         onProgress: (done, total) =>
-          setExportProgress({ done, total, label: "正在准备配音" }),
+          setExportProgress({ done, total, label: t("play.exportProgress.preparingVoice") }),
       });
     } catch {
       // best-effort — share the doc silent if collecting audio failed
@@ -1459,7 +1461,7 @@ function PlayInner() {
       });
       if (!r.ok) {
         const j = (await r.json().catch(() => ({}))) as { error?: string };
-        window.alert(j.error ?? "剧情分享打包失败");
+        window.alert(j.error ?? t("play.shareErrors.packFailed"));
         return;
       }
       const blob = await r.blob();
@@ -1473,11 +1475,11 @@ function PlayInner() {
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     } catch {
-      window.alert("剧情分享打包失败");
+      window.alert(t("play.shareErrors.packFailed"));
     } finally {
       exportingStoryRef.current = false;
     }
-  }, [beatAudioMap]);
+  }, [beatAudioMap, t]);
 
   // ── Presentation mode toggle ─────────────────────────────────────────
   const togglePresentation = useCallback(async () => {
@@ -1595,12 +1597,12 @@ function PlayInner() {
         const t0 = Date.now();
         try {
           const raw = sessionStorage.getItem(STORY_SHARE_STORAGE_KEY);
-          if (!raw) throw new Error("没有找到要载入的剧情文件。");
+          if (!raw) throw new Error(t("play.shareErrors.notFound"));
           const doc = parseStoryShareDoc(JSON.parse(raw));
           const imported = doc.session;
           const first = imported.history[0];
-          if (!first) throw new Error("剧情分享文件没有可载入的剧情。");
-          if (!first.scene.imageUrl) throw new Error("剧情分享文件缺少第一幕图片。");
+          if (!first) throw new Error(t("play.shareErrors.invalid"));
+          if (!first.scene.imageUrl) throw new Error(t("play.shareErrors.noImage"));
 
           const sessionOrientation =
             first.scene.orientation ?? imported.orientation ?? detectOrientation();
@@ -1609,7 +1611,7 @@ function PlayInner() {
           lastImageOriginalUrlRef.current = first.scene.imageUrl;
 
           const initialStoryState = first.storyStateAfter ?? imported.storyState;
-          if (!initialStoryState) throw new Error("剧情分享文件缺少初始剧情记忆，无法载入。");
+          if (!initialStoryState) throw new Error(t("play.shareErrors.noMemory"));
 
           const initial: Session = {
             ...imported,
@@ -1666,11 +1668,12 @@ function PlayInner() {
       styleReferenceImage?: string;
       orientation?: Orientation;
       playerName?: string;
+      language?: string;
     } | null = null;
     if (!cardName) {
       if (presetId) {
         const p = PRESETS.find((x) => x.id === presetId);
-        if (p) livePayload = { worldSetting: p.worldSetting, styleGuide: p.styleGuide, playerName: readStoredPlayerName() || undefined };
+        if (p) livePayload = { worldSetting: p.worldSetting, styleGuide: p.styleGuide, playerName: readStoredPlayerName() || undefined, language: locale };
       } else if (isCustom) {
         const stored = sessionStorage.getItem("infiplot:custom");
         if (stored) {
@@ -1687,6 +1690,7 @@ function PlayInner() {
               styleGuide: parsed.styleGuide,
               styleReferenceImage: parsed.styleReferenceImage || undefined,
               playerName: parsed.playerName || undefined,
+              language: locale,
             };
             // audioEnabled 已在 useState 初始化时反向投射到 muted；这里无需再额外存。
           } catch {
@@ -1701,6 +1705,10 @@ function PlayInner() {
     // firstact-portrait/ and firstscene-portrait/.
     const sessionOrientation: Orientation = detectOrientation();
     if (livePayload) livePayload.orientation = sessionOrientation;
+    // sessionLanguage flows into Session.language regardless of which start
+    // path was taken (prebaked card skips /api/start, so the language has to
+    // be tagged onto the local Session build for /api/scene calls).
+    const sessionLanguage: string = locale;
 
     if (!cardName && !livePayload) {
       router.replace("/");
@@ -1737,7 +1745,7 @@ function PlayInner() {
                 return { ...fallback, scene: { ...fallback.scene, orientation: "landscape" as const } };
               }
             }
-            throw new Error(`找不到精选剧情：${cardName}`);
+            throw new Error(t("home.errors.cardNotFound", { cardName }));
           },
         )
       : (async () => {
@@ -1781,6 +1789,7 @@ function PlayInner() {
           styleReferenceImage: data.styleReferenceImage,
           orientation: data.scene.orientation ?? sessionOrientation,
           playerName: livePayload?.playerName || readStoredPlayerName() || undefined,
+          language: sessionLanguage,
         };
         visitedBeatsRef.current = [data.scene.entryBeatId];
         setSession(initial);
@@ -1985,7 +1994,7 @@ function PlayInner() {
       setPhase("transitioning");
       setPendingClick(null);
       try {
-        if (!next.scene.imageUrl) throw new Error("剧情分享文件缺少下一幕图片。");
+        if (!next.scene.imageUrl) throw new Error(t("play.shareErrors.noNextImage"));
         const blobUrl = await getOrCreateBlobUrl(next.scene.imageUrl);
         const priorOriginal = lastImageOriginalUrlRef.current;
         if (priorOriginal && priorOriginal !== next.scene.imageUrl) {
@@ -2429,7 +2438,7 @@ function PlayInner() {
       <div className="min-h-screen flex flex-col items-center justify-center px-8">
         <div className="max-w-md text-center animate-fade-in">
           <p className="text-[10px] smallcaps text-clay-500 mb-6">
-            出 · 了 · 点 · 状 · 况
+            {t("play.error.title")}
           </p>
           <p className="font-serif italic text-clay-900 text-lg leading-[1.7] mb-6">
             {error}
@@ -2439,7 +2448,7 @@ function PlayInner() {
             className="mt-4 text-[10px] smallcaps text-clay-700 hover:text-ember-500 transition-colors inline-flex items-center gap-3"
           >
             <i className="fa-solid fa-arrow-left text-[9px]" />
-            返 回
+            {t("play.error.back")}
           </Link>
         </div>
       </div>
@@ -2484,7 +2493,7 @@ function PlayInner() {
             <Link
               href="/"
               className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition-colors hover:text-white"
-              aria-label="返回"
+              aria-label={t("play.tooltips.back")}
             >
               <i className="fa-solid fa-arrow-left text-[13px]" />
             </Link>
@@ -2492,7 +2501,7 @@ function PlayInner() {
               type="button"
               onClick={toggleMuted}
               className="pointer-events-auto flex h-9 w-9 items-center justify-center rounded-full bg-black/40 text-white/80 backdrop-blur-sm transition-colors hover:text-white"
-              aria-label={muted ? "取消静音" : "静音"}
+              aria-label={muted ? t("play.tooltips.unmute") : t("play.tooltips.mute")}
             >
               <i
                 className={`fa-solid ${muted ? "fa-volume-xmark" : "fa-volume-high"} text-[13px]`}
@@ -2505,7 +2514,7 @@ function PlayInner() {
             initialVisionClickEnabled={visionClickEnabled}
             onClose={() => setSettingsOpen(false)}
             onSaved={handleSettingsSaved}
-            footerNote="保存后配音 Key 会立即生效，用你自己的额度合成当前这一幕的配音。"
+            footerNote={t("play.settingsFooter")}
           />
         )}
         {authModalOpen && (
@@ -2570,9 +2579,9 @@ function PlayInner() {
         </Link>
         <div className="flex items-center gap-3">
           <div className="text-[10px] smallcaps text-clay-500 num flex items-center gap-3">
-            <span>第 · {String(sceneCount).padStart(3, "0")} · 幕</span>
+            <span>{t("play.counter.scene", { n: String(sceneCount).padStart(3, "0") })}</span>
             <span className="text-clay-300">·</span>
-            <span>{String(beatCount).padStart(3, "0")} · 拍</span>
+            <span>{t("play.counter.beat", { n: String(beatCount).padStart(3, "0") })}</span>
           </div>
           <UserChip />
         </div>
@@ -2603,11 +2612,11 @@ function PlayInner() {
               type="button"
               onClick={() => void togglePresentation()}
               className="text-[10px] smallcaps text-clay-500 hover:text-ember-500 transition-colors flex items-center gap-2"
-              aria-label="进入全屏"
-              title="全屏 (F)"
+              aria-label={t("play.tooltips.enterFullscreen")}
+              title={t("play.tooltips.fullscreen")}
             >
               <i className="fa-solid fa-expand text-[10px]" />
-              F · 键 · 全 · 屏
+              {t("play.buttons.fullscreen")}
             </button>
           }
           belowCanvas={
@@ -2618,22 +2627,22 @@ function PlayInner() {
                   onClick={() => void handleExportGallery()}
                   disabled={!!exportProgress}
                   className="text-[10px] smallcaps text-clay-500 hover:text-ember-500 transition-colors flex items-center gap-2 disabled:opacity-50"
-                  aria-label="导出可交互图集"
-                  title="导出本局为可交互图集链接（含配音；只会保留最近两次的可交互图集链接）"
+                  aria-label={t("play.tooltips.exportGalleryLabel")}
+                  title={t("play.tooltips.exportGallery")}
                 >
                   <i className="fa-solid fa-link text-[10px]" />
-                  导 · 出 · 图 · 集
+                  {t("play.buttons.exportGallery")}
                 </button>
                 <button
                   type="button"
                   onClick={() => void handleExportStory()}
                   disabled={!!exportProgress}
                   className="text-[10px] smallcaps text-clay-500 hover:text-ember-500 transition-colors flex items-center gap-2 disabled:opacity-50"
-                  aria-label="分享当前剧情"
-                  title="导出本局为可继续游玩的剧情 .infiplot（含配音）"
+                  aria-label={t("play.tooltips.shareStoryLabel")}
+                  title={t("play.tooltips.shareStory")}
                 >
                   <i className="fa-solid fa-share-nodes text-[10px]" />
-                  分 · 享 · 剧 · 情
+                  {t("play.buttons.shareStory")}
                 </button>
               </>
             ) : null
@@ -2644,13 +2653,13 @@ function PlayInner() {
                 type="button"
                 onClick={toggleMuted}
                 className="text-[10px] smallcaps text-clay-500 hover:text-ember-500 transition-colors flex items-center gap-2"
-                aria-label={muted ? "取消静音" : "静音"}
-                title={muted ? "取消静音" : "静音"}
+                aria-label={muted ? t("play.tooltips.unmute") : t("play.tooltips.mute")}
+                title={muted ? t("play.tooltips.unmute") : t("play.tooltips.mute")}
               >
                 <i
                   className={`fa-solid ${muted ? "fa-volume-xmark" : "fa-volume-high"} text-[10px]`}
                 />
-                {muted ? "静 · 音" : "有 · 声"}
+                {muted ? t("play.buttons.muted") : t("play.buttons.sound")}
               </button>
 
               {/* Silence nudge — a compact pill right beside the mute toggle.
@@ -2665,16 +2674,16 @@ function PlayInner() {
                     type="button"
                     onClick={() => setSettingsOpen(true)}
                     className="inline-flex items-center gap-1.5 rounded-full border border-ember-500/40 bg-ember-500/10 px-2.5 py-1 text-[10px] text-ember-500 hover:bg-ember-500/20 transition-colors"
-                    title="效果不满意/经常没声音？填入自己的 API Key 试试"
+                    title={t("play.tooltips.silenceNudge")}
                   >
                     <i className="fa-solid fa-volume-xmark text-[9px]" />
-                    效果不满意/经常没声音？填入自己的 API Key 试试
+                    {t("play.tooltips.silenceNudge")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setNudgeDismissed(true)}
-                    aria-label="关闭提示"
-                    title="关闭"
+                    aria-label={t("play.tooltips.closeNudge")}
+                    title={t("play.tooltips.closeNudge")}
                     className="text-clay-400 hover:text-clay-700 transition-colors"
                   >
                     <i className="fa-solid fa-xmark text-[10px]" />
@@ -2688,12 +2697,12 @@ function PlayInner() {
         <div className="mt-4 max-w-md w-full text-center min-h-[28px] flex items-center justify-center">
           {phase === "loading-first" && (
             <p className="text-[10px] smallcaps text-clay-500 animate-slow-pulse">
-              正 · 在 · 唤 · 起 · 第 · 一 · 幕
+              {t("play.loading.loadingFirst")}
             </p>
           )}
           {phase === "ready" && lastExitLabel && (
             <p className="text-[9px] smallcaps text-clay-400 animate-fade-in">
-              <span className="mr-2">上 · 一 · 步 ·</span>
+              <span className="mr-2">{t("play.previousStep")}</span>
               <span className="text-clay-600">{lastExitLabel}</span>
             </p>
           )}
@@ -2706,7 +2715,7 @@ function PlayInner() {
           initialVisionClickEnabled={visionClickEnabled}
           onClose={() => setSettingsOpen(false)}
           onSaved={handleSettingsSaved}
-          footerNote="保存后配音 Key 会立即生效，用你自己的额度合成当前这一幕的配音。"
+          footerNote={t("play.settingsFooter")}
         />
       )}
       {authModalOpen && (
@@ -2736,9 +2745,7 @@ export default function PlayPage() {
     <Suspense
       fallback={
         <div className="min-h-screen flex items-center justify-center">
-          <span className="text-[10px] smallcaps text-clay-500 animate-slow-pulse">
-            载入中
-          </span>
+          <i className="fa-solid fa-circle-notch fa-spin text-clay-500 text-xl" />
         </div>
       }
     >

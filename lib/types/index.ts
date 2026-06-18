@@ -309,6 +309,14 @@ export type Session = {
    * only (localStorage); never persisted server-side.
    */
   playerName?: string;
+  /**
+   * Active UI locale when the session was started, in BCP-47 form (e.g.
+   * "zh-CN", "en", "ja"). The engine appends a single-line language directive
+   * to the Architect / Writer user messages so AI-generated dialogue, beats,
+   * and narration are produced in this language. Absent → "zh-CN" for
+   * back-compat with sessions created before this field existed.
+   */
+  language?: string;
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -428,6 +436,9 @@ export type StartRequest = {
   orientation?: Orientation;
   /** Optional player display name — see Session.playerName. */
   playerName?: string;
+  /** Active UI locale — see Session.language. Drives the engine's language
+   *  directive so AI output is generated in the player's chosen language. */
+  language?: string;
 };
 
 // /api/parse-style-image — vision LLM extracts a textual painting-style

@@ -6,6 +6,7 @@ import {
   type DialogueHistoryItem,
 } from "@/components/DialogueHistoryModal";
 import type { Beat, BeatChoice, Orientation } from "@infiplot/types";
+import { useI18n } from "@/lib/i18n/client";
 
 export type Phase =
   | "loading-first"        // first scene not yet rendered
@@ -216,6 +217,7 @@ export function PlayCanvas({
   disabledChoiceIds?: readonly string[];
   freeformDisabled?: boolean;
 }) {
+  const { t } = useI18n();
   const imgRef = useRef<HTMLImageElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -401,7 +403,7 @@ export function PlayCanvas({
             src={imageUrl}
             width={intrinsicW}
             height={intrinsicH}
-            alt="Generated scene"
+            alt={t("play.imageAlt")}
             onClick={handleImageClick}
             draggable={false}
             onLoad={() => {
@@ -492,7 +494,7 @@ export function PlayCanvas({
                             setFreeformText("");
                           }
                         }}
-                        placeholder="输入你想说的或想做的..."
+                        placeholder={t("play.freeform.placeholder")}
                         maxLength={50}
                         autoFocus
                         className="flex-1 min-w-0 bg-transparent border-none outline-none font-serif text-[14px] placeholder:text-[rgba(200,185,155,0.50)]"
@@ -531,7 +533,7 @@ export function PlayCanvas({
                           index={i}
                           label={choice.label}
                           disabled={phase !== "ready" || disabledChoices.has(choice.id)}
-                          disabledTitle={disabledChoices.has(choice.id) ? "分享剧情未包含这条分支" : undefined}
+                          disabledTitle={disabledChoices.has(choice.id) ? t("play.choiceDisabled") : undefined}
                           vertical={portrait}
                           onClick={() => onSelectChoice(choice)}
                         />
@@ -554,7 +556,7 @@ export function PlayCanvas({
                             width: portrait ? "100%" : "42px",
                             padding: portrait ? "10px 16px" : "0",
                           }}
-                          title="自由输入"
+                          title={t("play.freeform.title")}
                         >
                           <span
                             className="opacity-0 group-hover:opacity-100 absolute inset-0 rounded-[5px] transition-opacity duration-200 pointer-events-none"
@@ -573,7 +575,7 @@ export function PlayCanvas({
                                 className="font-serif text-[13px]"
                                 style={{ color: "rgba(200,185,155,0.70)" }}
                               >
-                                自由输入
+                                {t("play.freeform.title")}
                               </span>
                             </span>
                           ) : (
@@ -667,8 +669,8 @@ export function PlayCanvas({
                         onOpenSettings();
                       }}
                       className="absolute bottom-[6px] right-[8px] flex h-7 w-7 items-center justify-center text-[rgba(195,155,75,0.78)] transition-colors hover:text-[rgba(245,235,210,0.96)]"
-                      aria-label="打开设置"
-                      title="设置"
+                      aria-label={t("play.tooltips.openSettings")}
+                      title={t("home.ui.settings")}
                     >
                       <i className="fa-solid fa-gear text-[12px]" />
                     </button>
@@ -683,8 +685,8 @@ export function PlayCanvas({
                     className={`absolute bottom-[6px] ${
                       onOpenSettings ? "right-[40px]" : "right-[8px]"
                     } flex h-7 w-7 items-center justify-center text-[rgba(195,155,75,0.78)] transition-colors hover:text-[rgba(245,235,210,0.96)]`}
-                    aria-label="打开剧情回溯"
-                    title="剧情回溯"
+                    aria-label={t("play.tooltips.openHistory")}
+                    title={t("play.tooltips.openHistory")}
                   >
                     <i className="fa-solid fa-clock-rotate-left text-[12px]" />
                   </button>
@@ -697,8 +699,8 @@ export function PlayCanvas({
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <p className="text-[10px] smallcaps text-cream-50/70 animate-slow-pulse">
                 {phase === "transitioning"
-                  ? "AI · 正 · 在 · 描 · 画 · 下 · 一 · 幕"
-                  : "AI · 正 · 在 · 想 · 你 · 看 · 到 · 了 · 什 · 么"}
+                  ? t("play.loading.transitioning")
+                  : t("play.loading.visionThinking")}
               </p>
             </div>
           )}
@@ -742,7 +744,7 @@ export function PlayCanvas({
         >
           <div className="w-1.5 h-1.5 bg-clay-500 rounded-full animate-slow-pulse" />
           <p className="text-[9px] smallcaps text-clay-500 animate-slow-pulse">
-            正 · 在 · 绘 · 制 · 第 · 一 · 幕
+            {t("play.loading.firstFrame")}
           </p>
           {/* 加载占位也挂同一对 slot，让右上 / 左上的操作按钮在第一帧就出现 */}
           {!fullViewport && aboveCanvas && (

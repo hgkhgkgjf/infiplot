@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { track } from "@/lib/analytics";
+import { useI18n } from "@/lib/i18n/client";
 
 type AuthStep = "pick" | "email-input" | "otp-verify";
 
@@ -25,6 +26,7 @@ export function AuthModal({
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const { t } = useI18n();
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -120,21 +122,21 @@ export function AuthModal({
         }}
         role="dialog"
         aria-modal="true"
-        aria-label="登录"
+        aria-label={t("auth.ariaLabel")}
       >
         {/* header */}
         <div className="flex items-center justify-between border-b border-cream-50/10 px-5 py-3.5">
           <div className="flex items-center gap-2 text-[11px] smallcaps text-cream-50/70">
             <i className="fa-solid fa-right-to-bracket text-[11px]" />
-            {step === "pick" && "登录以继续"}
-            {step === "email-input" && "邮箱登录"}
-            {step === "otp-verify" && "验证码"}
+            {step === "pick" && t("auth.steps.pick")}
+            {step === "email-input" && t("auth.steps.email")}
+            {step === "otp-verify" && t("auth.steps.otp")}
           </div>
           <button
             type="button"
             onClick={onClose}
             className="flex h-7 w-7 items-center justify-center text-cream-50/60 transition-colors hover:text-cream-50"
-            aria-label="关闭"
+            aria-label={t("auth.close")}
           >
             <i className="fa-solid fa-xmark text-[12px]" />
           </button>
@@ -154,7 +156,7 @@ export function AuthModal({
                 className="flex w-full items-center justify-center gap-2.5 rounded-md border border-cream-50/15 bg-cream-50/[0.06] px-4 py-2.5 text-[13px] text-cream-50/90 transition-colors hover:bg-cream-50/[0.12] disabled:opacity-50"
               >
                 <i className="fa-brands fa-google text-[14px]" />
-                Google 登录
+                {t("auth.googleLogin")}
               </button>
               <button
                 type="button"
@@ -163,11 +165,11 @@ export function AuthModal({
                 className="flex w-full items-center justify-center gap-2.5 rounded-md border border-cream-50/15 bg-cream-50/[0.06] px-4 py-2.5 text-[13px] text-cream-50/90 transition-colors hover:bg-cream-50/[0.12] disabled:opacity-50"
               >
                 <i className="fa-brands fa-github text-[14px]" />
-                GitHub 登录
+                {t("auth.githubLogin")}
               </button>
               <div className="flex items-center gap-3 py-1">
                 <div className="h-px flex-1 bg-cream-50/10" />
-                <span className="text-[10px] text-cream-50/40">或</span>
+                <span className="text-[10px] text-cream-50/40">{t("auth.or")}</span>
                 <div className="h-px flex-1 bg-cream-50/10" />
               </div>
               <button
@@ -176,7 +178,7 @@ export function AuthModal({
                 className="flex w-full items-center justify-center gap-2.5 rounded-md border border-cream-50/15 bg-cream-50/[0.06] px-4 py-2.5 text-[13px] text-cream-50/90 transition-colors hover:bg-cream-50/[0.12]"
               >
                 <i className="fa-solid fa-envelope text-[13px]" />
-                邮箱验证码登录
+                {t("auth.emailLogin")}
               </button>
             </>
           )}
@@ -188,7 +190,7 @@ export function AuthModal({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSendOtp()}
-                placeholder="your@email.com"
+                placeholder={t("auth.emailPlaceholder")}
                 autoFocus
                 className="w-full rounded-md border border-cream-50/15 bg-cream-50/[0.06] px-3.5 py-2.5 text-[13px] text-cream-50/90 placeholder:text-cream-50/30 outline-none focus:border-[rgba(175,138,72,0.6)]"
               />
@@ -198,7 +200,7 @@ export function AuthModal({
                 onClick={handleSendOtp}
                 className="w-full rounded-md bg-[rgba(175,138,72,0.85)] px-4 py-2.5 text-[13px] font-medium text-cream-50 transition-colors hover:bg-[rgba(175,138,72,1)] disabled:opacity-50"
               >
-                {loading ? "发送中..." : "发送验证码"}
+                {loading ? t("auth.sending") : t("auth.sendCode")}
               </button>
               <button
                 type="button"
@@ -208,7 +210,7 @@ export function AuthModal({
                 }}
                 className="w-full text-center text-[12px] text-cream-50/50 transition-colors hover:text-cream-50/80"
               >
-                返回
+                {t("auth.back")}
               </button>
             </>
           )}
@@ -216,7 +218,7 @@ export function AuthModal({
           {step === "otp-verify" && (
             <>
               <p className="text-[12px] text-cream-50/60 leading-snug">
-                验证码已发送至 <span className="text-cream-50/90">{email.trim()}</span>
+                {t("auth.codeSent", { email: email.trim() })}
               </p>
               <input
                 type="text"
@@ -225,7 +227,7 @@ export function AuthModal({
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                 onKeyDown={(e) => e.key === "Enter" && handleVerifyOtp()}
-                placeholder="6 位验证码"
+                placeholder={t("auth.codePlaceholder")}
                 autoFocus
                 className="w-full rounded-md border border-cream-50/15 bg-cream-50/[0.06] px-3.5 py-2.5 text-center text-[16px] tracking-[0.35em] text-cream-50/90 placeholder:text-cream-50/30 placeholder:tracking-normal outline-none focus:border-[rgba(175,138,72,0.6)]"
               />
@@ -235,7 +237,7 @@ export function AuthModal({
                 onClick={handleVerifyOtp}
                 className="w-full rounded-md bg-[rgba(175,138,72,0.85)] px-4 py-2.5 text-[13px] font-medium text-cream-50 transition-colors hover:bg-[rgba(175,138,72,1)] disabled:opacity-50"
               >
-                {loading ? "验证中..." : "确认"}
+                {loading ? t("auth.verifying") : t("auth.verify")}
               </button>
               <button
                 type="button"
@@ -246,7 +248,7 @@ export function AuthModal({
                 }}
                 className="w-full text-center text-[12px] text-cream-50/50 transition-colors hover:text-cream-50/80"
               >
-                重新发送
+                {t("auth.resend")}
               </button>
             </>
           )}

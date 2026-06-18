@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useI18n } from "@/lib/i18n/client";
 
 export type DialogueHistoryItem = {
   id: string;
@@ -23,6 +24,7 @@ export function DialogueHistoryModal({
   onClose: () => void;
   playerName?: string;
 }) {
+  const { t } = useI18n();
   const displaySpeaker = (s: string | undefined) =>
     s === "你" && playerName ? playerName : s;
   const listRef = useRef<HTMLDivElement>(null);
@@ -63,19 +65,19 @@ export function DialogueHistoryModal({
         }}
         role="dialog"
         aria-modal="true"
-        aria-label="剧情回溯"
+        aria-label={t("history.ariaLabel")}
       >
         <div className="flex items-center justify-between border-b border-cream-50/10 px-4 py-3">
           <div className="flex items-center gap-2 text-[10px] smallcaps text-cream-50/70">
             <i className="fa-solid fa-clock-rotate-left text-[10px]" />
-            剧 · 情 · 回 · 溯
+            {t("history.title")}
           </div>
           <button
             type="button"
             onClick={onClose}
             className="flex h-7 w-7 items-center justify-center text-cream-50/60 transition-colors hover:text-cream-50"
-            aria-label="关闭剧情回溯"
-            title="关闭"
+            aria-label={t("history.closeAriaLabel")}
+            title={t("history.close")}
           >
             <i className="fa-solid fa-xmark text-[12px]" />
           </button>
@@ -89,7 +91,7 @@ export function DialogueHistoryModal({
         >
           {items.length === 0 ? (
             <p className="py-8 text-center font-serif text-[13px] text-cream-50/55">
-              暂无历史。
+              {t("history.noHistory")}
             </p>
           ) : (
             <div className="space-y-3">
@@ -97,7 +99,7 @@ export function DialogueHistoryModal({
                 <div key={item.id} className="text-left">
                   <div className="mb-1 flex items-baseline gap-2">
                     <span className="text-[9px] smallcaps text-cream-50/35">
-                      第 {String(item.sceneIndex).padStart(3, "0")} 幕
+                      {t("history.scene", { n: String(item.sceneIndex).padStart(3, "0") })}
                     </span>
                     {item.speaker && (
                       <span className="font-serif text-[12px] text-[rgba(205,165,90,0.92)]">
@@ -128,7 +130,7 @@ export function DialogueHistoryModal({
                   {item.selectedChoice && (
                     <p className="mt-2 inline-flex max-w-full items-start gap-2 rounded-[5px] border border-[rgba(180,140,80,0.35)] bg-[rgba(180,140,60,0.10)] px-2.5 py-1.5 font-serif text-[12px] leading-snug text-cream-50/85">
                       <span className="shrink-0 text-[rgba(195,155,75,0.9)]">
-                        选择
+                        {t("history.choice")}
                       </span>
                       <span>{item.selectedChoice}</span>
                     </p>
@@ -136,7 +138,7 @@ export function DialogueHistoryModal({
                   {item.freeformAction && (
                     <p className="mt-2 inline-flex max-w-full items-start gap-2 rounded-[5px] border border-ember-500/30 bg-ember-500/10 px-2.5 py-1.5 font-serif text-[12px] leading-snug text-cream-50/85">
                       <span className="shrink-0 text-ember-300/90">
-                        行动
+                        {t("history.action")}
                       </span>
                       <span>{item.freeformAction}</span>
                     </p>
