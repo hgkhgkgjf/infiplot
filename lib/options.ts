@@ -5,7 +5,7 @@
 // origin is what keeps the "content-free" events honest — an event field can
 // only ever be one of these fixed labels, never free-form player text.
 
-export const GENDERS = ["男性向", "女性向"] as const;
+export const GENDERS = ["男性向", "女性向", "X"] as const;
 
 export const ART_STYLES = [
   // 特殊选项

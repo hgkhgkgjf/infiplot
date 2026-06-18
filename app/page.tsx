@@ -42,6 +42,12 @@ const EXAMPLE_PHRASES: Record<Gender, string[]> = {
     "重生回到分手前夜，这一次换我先放手",
     "一觉醒来成了乙游里的恶役千金，要躲开所有死亡结局",
   ],
+  X: [
+    "时空裂隙开启，多个平行世界的自己突然出现在眼前",
+    "记忆宫殿里，那些被遗忘的碎片正在重组为新的故事",
+    "一场无限流游戏开始，所有人都有唯一的通关机会",
+    "系统提示：你的选择将决定整个宇宙的命运走向",
+  ],
 };
 
 type Opt = {
@@ -65,7 +71,7 @@ import { STYLE_MAP } from "@/lib/options";
 
 /* 每个性向 24 篇预设剧情（与封面 /home/{m|f}{i}.webp 按索引一一对应）。
    男/女同索引共享画面尺寸，切性向 crossfade 时卡片高度不跳变。 */
-const STORIES: Record<Gender, StoryContent[]> = {
+const STORIES_BASE: Record<"男性向" | "女性向", StoryContent[]> = {
   男性向: [
   {
     "title": "贤者陨落",
@@ -671,6 +677,13 @@ const STORIES: Record<Gender, StoryContent[]> = {
   }
 ]
 };
+// X 使用与男性向相同的预设卡片
+const maleStories = STORIES_BASE["男性向"];
+const STORIES: Record<Gender, StoryContent[]> = {
+  男性向: STORIES_BASE["男性向"],
+  女性向: STORIES_BASE["女性向"],
+  X: maleStories,
+};
 
 /* 显示顺序映射：STORIES 数组本身不动（封面 /home/{m|f}{i}.webp、首幕
    /home/firstact/{m|f}{i}.json、prompts.json 都按其索引固定关联，重排会牵动
@@ -690,6 +703,18 @@ const DISPLAY_ORDER: Record<Gender, number[]> = {
     0, 1, 3, 4, 5, 6, 7, 12, 15, 16, 17, 14, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29,
   ],
   女性向: Array.from({ length: 30 }, (_, i) => i),
+  X: [
+    13, // 复古未来梦
+    8,  // 社团存亡日
+    9,  // 黄昏归途
+    18, // 数据幽灵
+    27, // 辐射新娘
+    10, // 霓虹义体
+    11, // 月光下的约定
+    2,  // 花魁的刀
+    // 其余按原顺序填补
+    0, 1, 3, 4, 5, 6, 7, 12, 15, 16, 17, 14, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29,
+  ],
 };
 
 /* ---------- typewriter ---------- */
@@ -1500,6 +1525,9 @@ export default function HomePage() {
     const audioEnabled = voice === "开启";
     const pace = PACINGS[sel[paceRow] ?? 1] ?? "紧凑爽快";
 
+    // 将 "X" 映射为 "通用性别" 供 AI 理解
+    const genderForAI = gender === "X" ? "通用性别" : gender;
+
     // worldSetting 顺序很重要：玩家输入若存在，必须放在最前面、单独成段、
     // 用强指令包住，否则模型会把它当成夹在风格说明里的背景参考、扩写出
     // 完全无关的剧情。Architect 看 worldSetting 时第一段权重最高。
@@ -1509,11 +1537,11 @@ export default function HomePage() {
             `【玩家给出的故事内核 — 必须以此为剧情主线，全篇紧扣，不要偏离到其他题材】`,
             `「${userPrompt}」`,
             ``,
-            `面向：${gender}观众。剧情风格：${plotStyle}。内容节奏：${pace}。`,
+            `面向：${genderForAI}观众。剧情风格：${plotStyle}。内容节奏：${pace}。`,
             `请在上述故事内核之上，以极致的戏剧张力与细腻的情感起伏，为玩家编织精彩的故事分支与对话。`,
           ]
         : [
-            `这是一款面向【${gender}】观众的 AI 交互剧情游戏。`,
+            `这是一款面向【${genderForAI}】观众的 AI 交互剧情游戏。`,
             `剧情风格：${plotStyle}。内容节奏：${pace}。`,
             `请依据上述设定，以极致的戏剧张力与细腻的情感起伏，为玩家编织精彩的故事分支与对话。`,
           ]
