@@ -63,10 +63,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_BOT_TOKEN }}
         with:
-          # Signatures are stored in-repo (self-hosted mode); version-N lets us
-          # roll the CLA text forward by bumping the path and re-collecting.
+          # Signatures are stored on a dedicated UNPROTECTED orphan branch
+          # (cla-signatures), NOT on main/staging. The action cannot push to
+          # branch-protection-protected branches, so we route signature writes
+          # to cla-signatures instead (see contributor-assistant/github-action#150).
+          # version-N lets us roll the CLA text forward by bumping the path
+          # and re-collecting.
           path-to-signatures: "cla-signatures/version-1.json"
-          branch: "main"
+          branch: "cla-signatures"
           # Link to the authoritative English CLA. Chinese reference:
           # https://github.com/zonghaoyuan/infiplot/blob/staging/CLA.zh.md
           path-to-cla-document: "https://github.com/zonghaoyuan/infiplot/blob/staging/CLA.md"
