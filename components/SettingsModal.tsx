@@ -18,6 +18,7 @@ import {
   TTS_KEY_DOC_URL,
   TTS_REGION_PRESETS,
 } from "@/lib/ttsPresets";
+import { useI18n } from "@/lib/i18n/client";
 
 const PLAYER_NAME_STORAGE_KEY = "infiplot:playerName";
 const VISION_CLICK_STORAGE_KEY = "infiplot:visionClick";
@@ -50,10 +51,10 @@ export function readStoredVisionClick(): boolean {
   }
 }
 
-const PROVIDER_OPTIONS: { value: ProviderProtocol | ""; label: string }[] = [
-  { value: "", label: "自动推断（推荐）" },
-  { value: "openai_compatible", label: "OpenAI Compatible" },
-  { value: "runware", label: "Runware" },
+const PROVIDER_OPTIONS: { value: ProviderProtocol | ""; labelKey: string; fallback: string }[] = [
+  { value: "", labelKey: "settings.models.providerAuto", fallback: "Auto-detect" },
+  { value: "openai_compatible", labelKey: "", fallback: "OpenAI Compatible" },
+  { value: "runware", labelKey: "", fallback: "Runware" },
 ];
 
 type ModelGroup = {
@@ -85,6 +86,7 @@ export function SettingsModal({
   }) => void;
   footerNote?: ReactNode;
 }) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
 
   // ── General tab state ──
@@ -96,7 +98,7 @@ export function SettingsModal({
   const [groups, setGroups] = useState<ModelGroup[]>([
     {
       key: "text",
-      label: "文本模型",
+      label: "text",
       icon: "fa-solid fa-pen-nib",
       baseUrl: initial?.textBaseUrl ?? "",
       apiKey: initial?.textApiKey ?? "",
@@ -105,7 +107,7 @@ export function SettingsModal({
     },
     {
       key: "image",
-      label: "绘图模型",
+      label: "image",
       icon: "fa-solid fa-palette",
       baseUrl: initial?.imageBaseUrl ?? "",
       apiKey: initial?.imageApiKey ?? "",
@@ -114,7 +116,7 @@ export function SettingsModal({
     },
     {
       key: "vision",
-      label: "识图模型",
+      label: "vision",
       icon: "fa-solid fa-eye",
       baseUrl: initial?.visionBaseUrl ?? "",
       apiKey: initial?.visionApiKey ?? "",
@@ -254,9 +256,16 @@ export function SettingsModal({
   const hasAnySetting = hasGeneralSetting || hasModelSetting;
 
   const tabs: { key: TabKey; label: string; icon: string }[] = [
-    { key: "general", label: "通用", icon: "fa-solid fa-sliders" },
-    { key: "models", label: "模型", icon: "fa-solid fa-microchip" },
+    { key: "general", label: t("settings.tabs.general"), icon: "fa-solid fa-sliders" },
+    { key: "models", label: t("settings.tabs.models"), icon: "fa-solid fa-microchip" },
   ];
+
+  const groupLabel = (k: string) =>
+    k === "text"
+      ? t("settings.models.textModel")
+      : k === "image"
+        ? t("settings.models.imageModel")
+        : t("settings.models.visionModel");
 
   return (
     <div
@@ -279,16 +288,16 @@ export function SettingsModal({
         <div className="flex items-center gap-5 px-6 md:px-8 py-5 border-b border-clay-900/10">
           <div className="flex flex-col">
             <span className="font-serif text-xl md:text-2xl text-clay-900">
-              设置
+              {t("settings.title")}
             </span>
             <span className="text-[11px] text-clay-500 mt-1 tracking-wide">
-              可选 · 这些设置仅保存在本地浏览器
+              {t("settings.subtitle")}
             </span>
           </div>
           <button
             type="button"
             onClick={close}
-            aria-label="关闭"
+            aria-label={t("home.ui.close")}
             className="ml-auto text-xl leading-none text-clay-500 hover:text-clay-900 transition-colors"
           >
             <i className="fa-solid fa-xmark" />
@@ -329,7 +338,7 @@ export function SettingsModal({
                     <i className="fa-solid fa-user-pen text-[11px]" />
                   </span>
                   <span className="font-serif text-base text-clay-900">
-                    玩家名字
+                    {t("settings.general.playerName")}
                   </span>
                 </div>
                 <input
@@ -339,11 +348,11 @@ export function SettingsModal({
                   maxLength={20}
                   autoComplete="off"
                   spellCheck={false}
-                  placeholder="不填则使用「你」"
+                  placeholder={t("settings.general.playerNamePlaceholder")}
                   className="h-11 w-full rounded-sm border border-clay-900/15 bg-cream-100 px-4 font-sans text-sm text-clay-900 outline-none transition-colors focus:border-ember-500 placeholder:text-clay-400"
                 />
                 <span className="text-[11px] text-clay-400">
-                  NPC 会在对话中用这个名字称呼你。不填则默认以「你」称呼。
+                  {t("settings.general.playerNameHint")}
                 </span>
               </div>
 
@@ -356,22 +365,22 @@ export function SettingsModal({
                     <i className="fa-solid fa-eye text-[11px]" />
                   </span>
                   <span className="font-serif text-base text-clay-900">
-                    点击画面识别
+                    {t("settings.general.visionClick")}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   {(
                     [
-                      { on: true, label: "开启", icon: "fa-solid fa-wand-magic-sparkles" },
-                      { on: false, label: "关闭", icon: "fa-solid fa-ban" },
+                      { on: true, labelKey: "settings.general.visionOn", icon: "fa-solid fa-wand-magic-sparkles" },
+                      { on: false, labelKey: "settings.general.visionOff", icon: "fa-solid fa-ban" },
                     ] as const
-                  ).map((t) => {
-                    const active = visionClick === t.on;
+                  ).map((opt) => {
+                    const active = visionClick === opt.on;
                     return (
                       <button
-                        key={String(t.on)}
+                        key={String(opt.on)}
                         type="button"
-                        onClick={() => setVisionClick(t.on)}
+                        onClick={() => setVisionClick(opt.on)}
                         className={
                           "flex items-center justify-center gap-2 rounded-sm border px-3 py-2.5 text-[13px] transition-all " +
                           (active
@@ -379,14 +388,14 @@ export function SettingsModal({
                             : "border-clay-900/12 text-clay-600 hover:border-clay-900/35 hover:bg-cream-100")
                         }
                       >
-                        <i className={t.icon + " text-[11px]"} />
-                        {t.label}
+                        <i className={opt.icon + " text-[11px]"} />
+                        {t(opt.labelKey)}
                       </button>
                     );
                   })}
                 </div>
                 <span className="text-[11px] text-clay-400">
-                  开启后，在选择节点点击画面会触发 AI 识图并生成新的剧情分支。
+                  {t("settings.general.visionHint")}
                 </span>
               </div>
 
@@ -404,8 +413,8 @@ export function SettingsModal({
             <>
               <div className="px-6 md:px-8 py-4">
                 <p className="text-[11px] leading-relaxed text-clay-400">
-                  <i className="fa-solid fa-circle-info mr-1.5" />
-                  请确保你的 API 端点支持浏览器跨域请求（CORS）。大多数主流提供商（OpenAI、Anthropic、Gemini、Runware 等）已默认支持。
+                  <i className="fa-solid fa-shield-halved mr-1.5" />
+                  {t("settings.models.corsNotice")}
                 </p>
               </div>
 
@@ -422,13 +431,13 @@ export function SettingsModal({
                         <i className={`${g.icon} text-[11px]`} />
                       </span>
                       <span className="font-serif text-base text-clay-900">
-                        {g.label}
+                        {groupLabel(g.key)}
                       </span>
                     </div>
 
                     <div className="flex flex-col gap-2">
                       <span className="text-[10px] smallcaps text-clay-500">
-                        BASE URL
+                        {t("settings.models.baseUrl")}
                       </span>
                       <input
                         value={g.baseUrl}
@@ -443,7 +452,7 @@ export function SettingsModal({
 
                     <div className="flex flex-col gap-2">
                       <span className="text-[10px] smallcaps text-clay-500">
-                        API Key
+                        {t("settings.models.apiKey")}
                       </span>
                       <div className="relative">
                         <input
@@ -463,7 +472,7 @@ export function SettingsModal({
                               [g.key]: !prev[g.key],
                             }))
                           }
-                          aria-label={showKeys[g.key] ? "隐藏" : "显示"}
+                          aria-label={showKeys[g.key] ? t("settings.models.hide") : t("settings.models.show")}
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-clay-400 hover:text-clay-700 transition-colors"
                         >
                           <i
@@ -475,7 +484,7 @@ export function SettingsModal({
 
                     <div className="flex flex-col gap-2">
                       <span className="text-[10px] smallcaps text-clay-500">
-                        Model
+                        {t("settings.models.model")}
                       </span>
                       <input
                         value={g.model}
@@ -490,7 +499,7 @@ export function SettingsModal({
 
                     <div className="flex flex-col gap-2">
                       <span className="text-[10px] smallcaps text-clay-500">
-                        Provider（可选）
+                        {t("settings.models.provider")}
                       </span>
                       <select
                         value={g.provider}
@@ -499,12 +508,12 @@ export function SettingsModal({
                       >
                         {PROVIDER_OPTIONS.map((opt) => (
                           <option key={opt.value || "auto"} value={opt.value}>
-                            {opt.label}
+                            {opt.labelKey ? t(opt.labelKey) : opt.fallback}
                           </option>
                         ))}
                       </select>
                       <span className="text-[11px] text-clay-400">
-                        留空时系统会根据 Base URL 自动推断协议。
+                        {t("settings.models.providerHint")}
                       </span>
                     </div>
                   </div>
@@ -520,43 +529,39 @@ export function SettingsModal({
                     <i className="fa-solid fa-volume-high text-[11px]" />
                   </span>
                   <span className="font-serif text-base text-clay-900">
-                    配音模型
+                    {t("settings.tts.title")}
                   </span>
                 </div>
-                <p className="text-[12px] leading-relaxed text-clay-500">
-                  填入你自己的
-                  <span className="text-clay-800"> 小米 MiMo API Key</span>
-                  ，配音将在浏览器本地合成，Key 只保存在本地、绝不经过服务器。MiMo
-                  TTS 目前
-                  <span className="text-clay-800">限时免费</span>
-                  ，申请即可使用。
-                </p>
+                <p
+                  className="text-[12px] leading-relaxed text-clay-500"
+                  dangerouslySetInnerHTML={{ __html: t("settings.tts.description") }}
+                />
 
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] smallcaps text-clay-500">
-                    Key 类型
+                    {t("settings.tts.keyType")}
                   </span>
                   <div className="grid grid-cols-2 gap-2">
                     {(
                       [
                         {
                           kind: "payg",
-                          label: "按量付费 Pay-as-you-go",
-                          sub: "sk- 开头",
+                          labelKey: "settings.tts.payg",
+                          subKey: "settings.tts.paygSub",
                         },
                         {
                           kind: "token-plan",
-                          label: "套餐 Token Plan",
-                          sub: "tp- 开头",
+                          labelKey: "settings.tts.tokenPlan",
+                          subKey: "settings.tts.tokenPlanSub",
                         },
                       ] as const
-                    ).map((t) => {
-                      const active = keyType === t.kind;
+                    ).map((opt) => {
+                      const active = keyType === opt.kind;
                       return (
                         <button
-                          key={t.kind}
+                          key={opt.kind}
                           type="button"
-                          onClick={() => setKeyType(t.kind)}
+                          onClick={() => setKeyType(opt.kind)}
                           className={
                             "flex flex-col gap-0.5 rounded-sm border px-3 py-2.5 text-left transition-all " +
                             (active
@@ -564,9 +569,9 @@ export function SettingsModal({
                               : "border-clay-900/12 text-clay-600 hover:border-clay-900/35 hover:bg-cream-100")
                           }
                         >
-                          <span className="text-[13px]">{t.label}</span>
+                          <span className="text-[13px]">{t(opt.labelKey)}</span>
                           <span className="text-[10px] text-clay-400">
-                            {t.sub}
+                            {t(opt.subKey)}
                           </span>
                         </button>
                       );
@@ -577,7 +582,7 @@ export function SettingsModal({
                 {keyType === "token-plan" && (
                   <div className="flex flex-col gap-2">
                     <span className="text-[10px] smallcaps text-clay-500">
-                      区域节点
+                      {t("settings.tts.region")}
                     </span>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                       {TTS_REGION_PRESETS.map((p) => {
@@ -600,14 +605,14 @@ export function SettingsModal({
                       })}
                     </div>
                     <span className="text-[11px] text-clay-400">
-                      选择与你的套餐订阅地区一致的节点（通常也是延迟最低的那个）。
+                      {t("settings.tts.regionHint")}
                     </span>
                   </div>
                 )}
 
                 <div className="flex flex-col gap-2">
                   <span className="text-[10px] smallcaps text-clay-500">
-                    API Key
+                    {t("settings.models.apiKey")}
                   </span>
                   <div className="relative">
                     <input
@@ -618,15 +623,15 @@ export function SettingsModal({
                       spellCheck={false}
                       placeholder={
                         keyType === "payg"
-                          ? "粘贴 sk- 开头的按量 Key"
-                          : "粘贴 tp- 开头的套餐 Key"
+                          ? t("settings.tts.apiKeyPlaceholderPayg")
+                          : t("settings.tts.apiKeyPlaceholderToken")
                       }
                       className="h-11 w-full rounded-sm border border-clay-900/15 bg-cream-100 pl-4 pr-11 font-sans text-sm text-clay-900 outline-none transition-colors focus:border-ember-500 placeholder:text-clay-400"
                     />
                     <button
                       type="button"
                       onClick={() => setShowTtsKey((v) => !v)}
-                      aria-label={showTtsKey ? "隐藏" : "显示"}
+                      aria-label={showTtsKey ? t("settings.models.hide") : t("settings.models.show")}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-clay-400 hover:text-clay-700 transition-colors"
                     >
                       <i
@@ -637,11 +642,9 @@ export function SettingsModal({
                   {prefixMismatch && (
                     <span className="flex items-start gap-1.5 text-[11px] leading-relaxed text-ember-500">
                       <i className="fa-solid fa-triangle-exclamation mt-0.5 text-[10px]" />
-                      此 Key 不是 {expectedPrefix} 开头，可能与所选「
                       {keyType === "payg"
-                        ? "按量付费 Pay-as-you-go"
-                        : "套餐 Token Plan"}
-                      」类型不符，请确认是否填错。
+                        ? t("settings.tts.keyMismatchPayg")
+                        : t("settings.tts.keyMismatchToken")}
                     </span>
                   )}
                   <a
@@ -651,7 +654,7 @@ export function SettingsModal({
                     className="inline-flex items-center gap-1.5 text-[11px] text-ember-500 hover:text-ember-400 transition-colors"
                   >
                     <i className="fa-brands fa-github text-[11px]" />
-                    如何免费申请 Key？查看图文教程
+                    {t("settings.tts.tutorialLink")}
                   </a>
                 </div>
               </div>
@@ -668,7 +671,7 @@ export function SettingsModal({
               className="inline-flex items-center gap-2 rounded-sm border border-clay-900/15 px-4 py-2 font-sans text-sm text-clay-600 transition-colors hover:border-clay-900/35 hover:text-clay-900"
             >
               <i className="fa-solid fa-rotate-left text-xs" />
-              全部清除
+              {t("settings.actions.clearAll")}
             </button>
           )}
           <button
@@ -677,7 +680,7 @@ export function SettingsModal({
             className="ml-auto inline-flex items-center gap-2 rounded-sm bg-clay-900 px-5 py-2.5 font-sans text-sm text-cream-50 transition-colors hover:bg-ember-500"
           >
             <i className="fa-solid fa-check text-xs" />
-            保存
+            {t("settings.actions.save")}
           </button>
         </div>
       </div>

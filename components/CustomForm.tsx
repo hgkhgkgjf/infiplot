@@ -3,9 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { track } from "@/lib/analytics";
+import { useI18n } from "@/lib/i18n/client";
 
 export function CustomForm() {
   const router = useRouter();
+  const { t } = useI18n();
   const [worldSetting, setWorldSetting] = useState("");
   const [styleGuide, setStyleGuide] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -35,7 +37,7 @@ export function CustomForm() {
             <span className="text-clay-400 mr-2 font-serif italic not-italic font-normal">
               ①
             </span>
-            World · 世界观
+            {t("customForm.world")}
           </span>
           <span className="text-[10px] text-clay-400 num">
             {worldSetting.length}
@@ -45,7 +47,7 @@ export function CustomForm() {
           value={worldSetting}
           onChange={(e) => setWorldSetting(e.target.value)}
           rows={6}
-          placeholder="例：1990 年代末的中国南方县城。主角是高三转学生，在多雨的六月遇到一个总在天台读诗的同学。剧情慢热、含蓄、带点伤感⋯"
+          placeholder={t("customForm.worldPlaceholder")}
           className="w-full bg-transparent border-0 border-b border-clay-900/20 px-0 py-3 text-clay-900 font-serif text-lg leading-[1.7] focus:outline-none focus:border-clay-700 transition-colors resize-none placeholder:font-serif placeholder:italic placeholder:text-base placeholder:leading-[1.7]"
         />
       </div>
@@ -56,7 +58,7 @@ export function CustomForm() {
             <span className="text-clay-400 mr-2 font-serif italic not-italic font-normal">
               ②
             </span>
-            Style · 画风
+            {t("customForm.style")}
           </span>
           <span className="text-[10px] text-clay-400 num">
             {styleGuide.length}
@@ -66,7 +68,7 @@ export function CustomForm() {
           value={styleGuide}
           onChange={(e) => setStyleGuide(e.target.value)}
           rows={4}
-          placeholder="例：水彩柔光，午后暖意，动漫视觉小说画风，传统对话面板⋯"
+          placeholder={t("customForm.stylePlaceholder")}
           className="w-full bg-transparent border-0 border-b border-clay-900/20 px-0 py-3 text-clay-900 font-serif text-lg leading-[1.7] focus:outline-none focus:border-clay-700 transition-colors resize-none placeholder:font-serif placeholder:italic placeholder:text-base placeholder:leading-[1.7]"
         />
       </div>
@@ -74,17 +76,17 @@ export function CustomForm() {
       <div className="pt-6 flex items-center justify-between">
         <span className="text-[10px] smallcaps text-clay-500">
           {submitting
-            ? "正在唤起第一帧…"
+            ? t("customForm.status.starting")
             : canSubmit
-              ? "准 · 备 · 就 · 绪"
-              : "两 · 段 · 即 · 可 · 开 · 场"}
+              ? t("customForm.status.ready")
+              : t("customForm.status.needMore")}
         </span>
         <button
           type="submit"
           disabled={!canSubmit}
           className="group flex items-center gap-3 text-[10px] smallcaps text-clay-900 disabled:text-clay-300 disabled:cursor-not-allowed enabled:hover:text-ember-500 transition-colors duration-300"
         >
-          开 始
+          {t("customForm.start")}
           <span className="w-10 h-px bg-current transition-all duration-300 group-enabled:group-hover:w-16" />
           <i className="fa-solid fa-arrow-right text-[9px]" />
         </button>

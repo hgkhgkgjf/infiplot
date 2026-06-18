@@ -97,6 +97,24 @@ export default function TermsPage() {
           <p className="mt-3">
             通过本服务生成的游戏内容（包括故事文本、图片和语音）由您在游戏会话期间创造性地引导产生。我们不主张对您个人游戏会话中生成的内容拥有所有权。
           </p>
+          <p className="mt-3">
+            外部贡献者向开源项目提交代码前，需先签署一次《贡献者许可协议》（CLA），明确授予项目维护者将相关贡献用于本服务（含闭源版本）的权利。详见 GitHub 仓库中的{" "}
+            <a
+              href="https://github.com/zonghaoyuan/infiplot/blob/staging/CLA.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ember-500 hover:text-ember-400 transition-colors underline decoration-clay-900/20 underline-offset-2"
+            >
+              CLA.md
+            </a>
+            （<a
+              href="https://github.com/zonghaoyuan/infiplot/blob/staging/CLA.zh.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-ember-500 hover:text-ember-400 transition-colors underline decoration-clay-900/20 underline-offset-2"
+            >
+              中文参考译文</a>）。
+          </p>
         </section>
 
         <section>

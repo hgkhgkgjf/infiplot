@@ -45,7 +45,7 @@ InfiPlot offers multiple deployment options. For personal use, we recommend the 
 
 Cloudflare deployment requires the Workers Paid Plan because the scene pipeline needs longer CPU time.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/zonghaoyuan/infiplot&env=TEXT_BASE_URL,TEXT_API_KEY,TEXT_MODEL,IMAGE_BASE_URL,IMAGE_API_KEY,IMAGE_MODEL,VISION_BASE_URL,VISION_API_KEY,VISION_MODEL,TTS_BASE_URL,TTS_API_KEY,TTS_SPEECH_MODEL,MOCK_IMAGE&envDescription=Three%20required%20providers%20%2B%20optional%20TTS.%20Any%20OpenAI-compatible%20endpoint%20works%20for%20text%2Fvision.%20TTS%20uses%20MiMo%27s%20own%20protocol.&envLink=https://github.com/zonghaoyuan/infiplot/blob/main/README.en.md%23configuration-guide) &nbsp; [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zonghaoyuan/infiplot)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/zonghaoyuan/infiplot&env=TEXT_BASE_URL,TEXT_API_KEY,TEXT_MODEL,IMAGE_BASE_URL,IMAGE_API_KEY,IMAGE_MODEL,VISION_BASE_URL,VISION_API_KEY,VISION_MODEL,TTS_BASE_URL,TTS_API_KEY,TTS_SPEECH_MODEL,MOCK_IMAGE&envDescription=Three%20required%20providers%20%2B%20optional%20TTS.%20Any%20OpenAI-compatible%20endpoint%20works%20for%20text%2Fvision.%20TTS%3A%20Xiaomi%20MiMo%20%28free%29%20or%20StepFun%20%28paid%2C%20better%20quality%29.&envLink=https://github.com/zonghaoyuan/infiplot/blob/main/README.en.md%23configuration-guide) &nbsp; [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zonghaoyuan/infiplot)
 
 After deploy, fill in the environment variables — see the [Configuration guide](#configuration-guide) below. The repo root is the app itself: Vercel needs no special root directory; on Cloudflare, just set the build command to `pnpm build:cf`.
 
@@ -154,7 +154,7 @@ Scan to join our **beta community on QQ** (group ID `575404333`) to share feedba
 
 ## Configuration guide
 
-InfiPlot talks to four kinds of model providers. **Text and Vision use any OpenAI-compatible endpoint**, so you can mix and match freely. **Image** currently goes to **Runware** (its own task-array protocol, not OpenAI-compatible). **TTS** uses **Xiaomi MiMo**'s own voice design / clone protocol — per-character voice design, clone, and per-line delivery direction.
+InfiPlot talks to four kinds of model providers. **Text and Vision use any OpenAI-compatible endpoint**, so you can mix and match freely — for Google Gemini, point `*_BASE_URL` at its OpenAI-compatible endpoint (`https://generativelanguage.googleapis.com/v1beta/openai`). For Anthropic Claude, a compatible gateway (e.g. LiteLLM) is recommended — Anthropic's official endpoint offers an OpenAI-compatible layer but no caching, which raises cost and latency. **Image** supports **Runware** (its own task-array protocol) and **OpenAI** (`gpt-image`). **TTS** supports **Xiaomi MiMo** (its own voice design / clone protocol — per-character voice design, clone, and per-line delivery direction; free) and **StepFun** (32 preset voices, auto-matched by AI; paid but better quality).
 
 **1. Choose your providers**
 
@@ -163,7 +163,7 @@ InfiPlot talks to four kinds of model providers. **Text and Vision use any OpenA
 | Text · story director  | `TEXT_BASE_URL` `TEXT_API_KEY` `TEXT_MODEL`        | ✅ | `deepseek-v4-flash` via DeepSeek |
 | Image · scene renderer  | `IMAGE_BASE_URL` `IMAGE_API_KEY` `IMAGE_MODEL`     | ✅ | `runware:400@6` (FLUX.2 [klein] 9B KV) via [Runware](https://runware.ai) |
 | Vision · click reader  | `VISION_BASE_URL` `VISION_API_KEY` `VISION_MODEL`  | ✅ | `gemini-3.5-flash` via Google |
-| TTS · per-character voice | `TTS_BASE_URL` `TTS_API_KEY` `TTS_SPEECH_MODEL` | optional — leave blank to run silently | `mimo-v2.5-tts` via Xiaomi MiMo |
+| TTS · per-character voice | `TTS_BASE_URL` `TTS_API_KEY` `TTS_SPEECH_MODEL` | optional — leave blank to run silently | `mimo-v2.5-tts` via Xiaomi MiMo (free); paid alternative: `step-tts-2` via [StepFun](https://www.stepfun.com) |
 
 **2. Set the environment variables**
 
@@ -221,3 +221,11 @@ See the [Bring-your-own voice Key guide](docs/xiaomi-tts-key.md) for how to obta
 ## Star history
 
 [![Star History Chart](https://api.star-history.com/svg?repos=zonghaoyuan/infiplot&type=Date)](https://star-history.com/#zonghaoyuan/infiplot&Date)
+
+---
+
+## License & contributing
+
+This project is open-sourced under [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html).
+
+Contributions are welcome! External contributors must sign our Contributor License Agreement (CLA) once before a PR can be merged — see [CONTRIBUTING.md](CONTRIBUTING.md) and [CLA.md](CLA.md). Sign it directly in the PR via a comment after opening it; no separate step needed beforehand.

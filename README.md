@@ -45,7 +45,7 @@ InfiPlot 支持多种部署方式。个人使用推荐 Vercel 一键部署；想
 
 Cloudflare 部署因场景流水线需要更长 CPU 时间，需要 Workers Paid Plan。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/zonghaoyuan/infiplot&env=TEXT_BASE_URL,TEXT_API_KEY,TEXT_MODEL,IMAGE_BASE_URL,IMAGE_API_KEY,IMAGE_MODEL,VISION_BASE_URL,VISION_API_KEY,VISION_MODEL,TTS_BASE_URL,TTS_API_KEY,TTS_SPEECH_MODEL,MOCK_IMAGE&envDescription=Three%20required%20providers%20%2B%20optional%20TTS.%20Any%20OpenAI-compatible%20endpoint%20works%20for%20text%2Fvision.%20TTS%20uses%20MiMo%27s%20own%20protocol.&envLink=https://github.com/zonghaoyuan/infiplot%23%E9%85%8D%E7%BD%AE%E6%95%99%E7%A8%8B) &nbsp; [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zonghaoyuan/infiplot)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/zonghaoyuan/infiplot&env=TEXT_BASE_URL,TEXT_API_KEY,TEXT_MODEL,IMAGE_BASE_URL,IMAGE_API_KEY,IMAGE_MODEL,VISION_BASE_URL,VISION_API_KEY,VISION_MODEL,TTS_BASE_URL,TTS_API_KEY,TTS_SPEECH_MODEL,MOCK_IMAGE&envDescription=Three%20required%20providers%20%2B%20optional%20TTS.%20Any%20OpenAI-compatible%20endpoint%20works%20for%20text%2Fvision.%20TTS%3A%20Xiaomi%20MiMo%20%28free%29%20or%20StepFun%20%28paid%2C%20better%20quality%29.&envLink=https://github.com/zonghaoyuan/infiplot%23%E9%85%8D%E7%BD%AE%E6%95%99%E7%A8%8B) &nbsp; [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zonghaoyuan/infiplot)
 
 部署完成后，填好环境变量 —— 详见下方的[配置教程](#配置教程)。仓库根目录就是应用本身：Vercel 无需额外设置 root directory；在 Cloudflare 上把构建命令设为 `pnpm build:cf` 即可。
 
@@ -153,7 +153,7 @@ docker compose up -d
 
 ## 配置教程
 
-InfiPlot 会与四类模型供应商通信。**文本（Text）和视觉（Vision）** 默认使用 OpenAI 兼容接口，也可原生切换到 **Anthropic** 或 **Google Gemini**。**图像（Image）** 支持 **Runware**（其自有 task-array 协议）、**OpenAI**（`gpt-image`）与 **Google Gemini**（Nano Banana）。**语音（TTS）**使用**小米 MiMo** 自有的音色设计/克隆协议——支持角色级音色设计、克隆与逐行演绎指导。
+InfiPlot 会与四类模型供应商通信。**文本（Text）和视觉（Vision）** 只走 OpenAI 兼容接口——想用 Google Gemini 的话，把 `*_BASE_URL` 指向其 OpenAI 兼容端点（`https://generativelanguage.googleapis.com/v1beta/openai`）即可；想用 Anthropic Claude 的话，推荐通过兼容网关（如 LiteLLM）转发，官方 OpenAI 兼容层不支持缓存，可能推高成本与延迟。**图像（Image）** 支持 **Runware**（其自有 task-array 协议）与 **OpenAI**（`gpt-image`）。**语音（TTS）** 支持**小米 MiMo**（自有的音色设计/克隆协议——支持角色级音色设计、克隆与逐行演绎指导，免费）和 **StepFun 阶跃星辰**（32 个预设音色，由 AI 自动匹配，付费但体验更好）。
 
 **1. 选择你的供应商**
 
@@ -162,17 +162,17 @@ InfiPlot 会与四类模型供应商通信。**文本（Text）和视觉（Visio
 | Text · 剧情导演  | `TEXT_BASE_URL` `TEXT_API_KEY` `TEXT_MODEL`        | ✅ | DeepSeek 的 `deepseek-v4-flash` |
 | Image · 场景渲染  | `IMAGE_BASE_URL` `IMAGE_API_KEY` `IMAGE_MODEL`     | ✅ | [Runware](https://runware.ai) 的 `runware:400@6`（FLUX.2 [klein] 9B KV） |
 | Vision · 点击解读  | `VISION_BASE_URL` `VISION_API_KEY` `VISION_MODEL`  | ✅ | Google 的 `gemini-3.5-flash` |
-| TTS · 角色配音 | `TTS_BASE_URL` `TTS_API_KEY` `TTS_SPEECH_MODEL` | 可选 —— 留空则静音运行 | 小米 MiMo 的 `mimo-v2.5-tts` |
+| TTS · 角色配音 | `TTS_BASE_URL` `TTS_API_KEY` `TTS_SPEECH_MODEL` | 可选 —— 留空则静音运行 | 小米 MiMo 的 `mimo-v2.5-tts`（免费）；付费可选 [StepFun](https://www.stepfun.com) 的 `step-tts-2` |
 
 > **可选 · 指定接口协议**：每类模型都可加一个 `*_PROVIDER` 变量（`TEXT_PROVIDER` / `VISION_PROVIDER` / `IMAGE_PROVIDER`）显式选择接口协议。**不设则保持向后兼容**——文本/视觉默认走 OpenAI 兼容接口，图像按 `*_BASE_URL` 自动判断（`runware.ai` → Runware，否则 OpenAI 兼容；个别在 `runware.ai` 上以 OpenAI 协议提供的模型——如 `image-2-vip`——会按 OpenAI 兼容处理，需要时用 `IMAGE_PROVIDER` 显式覆盖即可）。
 >
 > | 取值 | 适用 | 说明 |
 > |---|---|---|
 > | `openai_compatible`（默认） | Text · Vision · Image | OpenAI Chat Completions / `/images/generations` |
-> | `anthropic` | Text · Vision | 原生 Anthropic Messages 接口 |
-> | `google` | Text · Vision · Image | 原生 Gemini；图像用 Nano Banana 系（如 `gemini-2.5-flash-image`，**勿用 Imagen（已废弃，2026-06-24 停服）**） |
 > | `openai` | Image | OpenAI `gpt-image`，支持参考图编辑 |
 > | `runware` | Image | Runware task-array 协议 |
+>
+> 文本和视觉**仅**支持 `openai_compatible`。要用 Gemini，把 `*_BASE_URL` 指向其 OpenAI 兼容端点（`https://generativelanguage.googleapis.com/v1beta/openai`）即可。要用 Claude，推荐通过兼容网关（如 LiteLLM）转发——Anthropic 官方端点虽提供 OpenAI 兼容层，但不支持缓存，会推高成本与延迟。
 >
 > 此外，`*_BASE_URL` 带不带 `/v1`（甚至末尾多写了 `/chat/completions`）都能正常工作——引擎会自动规范化。
 
@@ -232,3 +232,11 @@ InfiPlot 会与四类模型供应商通信。**文本（Text）和视觉（Visio
 ## Star 趋势
 
 [![Star History Chart](https://api.star-history.com/svg?repos=zonghaoyuan/infiplot&type=Date)](https://star-history.com/#zonghaoyuan/infiplot&Date)
+
+---
+
+## 协议与贡献
+
+本项目基于 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) 协议开源。
+
+欢迎贡献！外部贡献者在 PR 合并前，需要签署一次我们的《贡献者许可协议》（CLA）——详见 [CONTRIBUTING.md](CONTRIBUTING.md) 与 [CLA.md](CLA.md)（[中文参考译文](CLA.zh.md)）。

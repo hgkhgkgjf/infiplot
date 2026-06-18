@@ -11,10 +11,82 @@
   "observability": {
     "enabled": true
   },
-  // 60s mirrors vercel.json maxDuration for the scene pipeline tail
-  // (multi-agent LLM, ~30-45s p95). Requires Workers Paid — Free is capped
-  // at 10ms CPU. I/O wait does not count against this budget.
-  "limits": {
-    "cpu_ms": 60000
-  }
+  // Preserve Dashboard-set variables across deployments (Vercel-like behavior).
+  // Only vars explicitly listed in "vars" below are overwritten; all others
+  // (set via Dashboard or `wrangler secret put`) survive redeployments.
+  "keep_vars": true,
+  // Placement Hint: uncomment to pin Worker execution to a specific region.
+  // Example: "azure:eastasia" for lowest latency to mainland China.
+  // Static assets always serve from the edge nearest the user regardless.
+  // "placement": {
+  //   "region": "azure:eastasia"
+  // },
+  // CPU time limit: Workers Paid plan default is 30s, which is sufficient.
+  // InfiPlot scene pipeline is I/O-bound (5-6 LLM API calls with 3-15s each),
+  // actual CPU work (JSON parse, string ops) ~200ms. No cpu_ms override needed.
+  // "limits": {
+  //   "cpu_ms": 30000
+  // },
+
+  // ── Runtime variables ───────────────────────────────────────────────
+  // Structural vars with safe defaults are listed here. All provider-specific
+  // vars (TEXT_BASE_URL, TEXT_MODEL, IMAGE_*, VISION_*, TTS_*, etc.) should be
+  // set via Cloudflare Dashboard (Settings → Variables) or .dev.vars for local
+  // dev. With "keep_vars": true above, Dashboard values survive redeployments.
+  "vars": {
+    "NEXT_PRIVATE_MINIMAL_MODE": "1",
+    "MOCK_IMAGE": "false"
+  },
+
+  // ── Secrets (set via Dashboard or `wrangler secret put`) ─────────────
+  // Required (3):  TEXT_API_KEY, IMAGE_API_KEY, VISION_API_KEY
+  // Optional (2):  TTS_API_KEY (voice synthesis), GALLERY_SECRET (story share encryption)
+  //
+  // ── Runtime variables (set via Dashboard) ────────────────────────────
+  // Required (6):  TEXT_BASE_URL, TEXT_MODEL, IMAGE_BASE_URL, IMAGE_MODEL,
+  //                VISION_BASE_URL, VISION_MODEL
+  // Optional (4):  TTS_BASE_URL, TTS_SPEECH_MODEL (voice synthesis),
+  //                IMAGE_TIMEOUT_MS, IMAGE_HEDGE_MS (image generation tuning)
+  //
+  // ── Build-time variables (set as Build Variables in Workers Builds) ──
+  // These are inlined at build time, NOT runtime. Set them in Dashboard under
+  // Settings → Build → Build variables, or as env vars during `pnpm build:cf`.
+  // All are optional — the app degrades gracefully without them:
+  //   NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY (auth)
+  //   NEXT_PUBLIC_IMAGE_PROXY_URL (browser image proxying)
+  //   NEXT_PUBLIC_UMAMI_SRC, NEXT_PUBLIC_UMAMI_WEBSITE_ID,
+  //   NEXT_PUBLIC_UMAMI_DOMAINS (analytics)
+  //
+  // See .dev.vars.example for a full reference of all variables.
+  // ────────────────────────────────────────────────────────────────────
+
+  // ── Cloudflare D1 database (story persistence — optional) ───────────
+  // Not required for core gameplay. Uncomment and fill in your ID if needed:
+  //   wrangler d1 create infiplot-db
+  // "d1_databases": [
+  //   {
+  //     "binding": "DB",
+  //     "database_name": "infiplot-db",
+  //     "database_id": "<your-d1-database-id>"
+  //   }
+  // ],
+
+  // ── Cloudflare R2 bucket (asset storage — optional) ─────────────────
+  // Not required for core gameplay. Uncomment if needed:
+  //   wrangler r2 bucket create infiplot-assets
+  // "r2_buckets": [
+  //   {
+  //     "binding": "R2_BUCKET",
+  //     "bucket_name": "infiplot-assets"
+  //   }
+  // ],
+
+  // ── Cloudflare KV namespace (reserved for future use) ───────────────
+  // Uncomment if needed: wrangler kv namespace create KV
+  // "kv_namespaces": [
+  //   {
+  //     "binding": "KV",
+  //     "id": "<your-kv-namespace-id>"
+  //   }
+  // ]
 }
