@@ -1,0 +1,74 @@
+name: "CLA Assistant"
+
+# Requires the following GitHub repository secret to be configured:
+#   CLA_BOT_TOKEN — a fine-grained Personal Access Token with
+#   `Contents: Read and write` (and `Pull requests: Read`) scope on this
+#   repository. The GITHUB_TOKEN cannot commit to a protected branch, so a PAT
+#   is needed to record signatures into cla-signatures/version-1.json.
+#
+# To actually enforce the CLA, add `cla/cla-assistant.yml:CLAAssistant` (the
+# status check produced by this job) as a required status check in the branch
+# protection rules for `main` and `staging`.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+# Minimal explicit permissions: this workflow runs on pull_request_target and
+# issues a token, so do not rely on repo defaults. `statuses: write` is what the
+# branch-protection required check (cla/cla-assistant.yml) reports against.
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+  statuses: write
+
+jobs:
+  CLAAssistant:
+    runs-on: ubuntu-latest
+    # Resolve "is the token configured?" once at job level. Step-level `if`
+    # cannot safely reference `secrets.*` (it may be empty or elided), so we
+    # materialize it into an env boolean string and test that instead. This is
+    # also what lets forks/renames of this repo skip the job cleanly when no
+    # CLA_BOT_TOKEN is set, instead of failing CI.
+    env:
+      HAS_CLA_BOT_TOKEN: ${{ secrets.CLA_BOT_TOKEN != '' }}
+    steps:
+      - name: "CLA Assistant"
+        # SKIPPED when no secrets are configured. Keep the whole predicate
+        # inside a single ${{ }} so && / || are evaluated as a boolean
+        # expression, not string-concatenated.
+        if: ${{ env.HAS_CLA_BOT_TOKEN == 'true' && ((github.event_name == 'issue_comment' && (github.event.comment.body == 'recheckcla' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA')) || github.event_name == 'pull_request_target') }}
+        uses: contributor-assistant/cla-assistant-action@v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.CLA_BOT_TOKEN }}
+        with:
+          # Signatures are stored in-repo (self-hosted mode); version-N lets us
+          # roll the CLA text forward by bumping the path and re-collecting.
+          path-to-signatures: "cla-signatures/version-1.json"
+          branch: "main"
+          # Link to the authoritative English CLA. Chinese reference:
+          # https://github.com/zonghaoyuan/infiplot/blob/staging/CLA.zh.md
+          path-to-cla-document: "https://github.com/zonghaoyuan/infiplot/blob/staging/CLA.md"
+          allowlist: "github-actions[bot],dependabot[bot],zonghaoyuan,web-flow"
+          block-sharing-crucial-repositories: true
+
+          create-file-commit-message: "docs(cla): create CLA signature store"
+          custom-notsigned-prcomment: >
+            感谢你的 PR！在合并之前，请先签署我们的《贡献者许可协议》（CLA）。阅读
+            [CLA.md](https://github.com/zonghaoyuan/infiplot/blob/staging/CLA.md)
+            （[中文参考译文](https://github.com/zonghaoyuan/infiplot/blob/staging/CLA.zh.md)）后，
+            在本 PR 中回复以下内容即视为签署：
+
+
+            ```
+            I have read the CLA Document and I hereby sign the CLA
+            ```
+
+
+            你只需签署一次，之后对 InfiPlot 的所有贡献都受同一协议约束。
+          custom-pr-sign-comment: "The pull request signer accepted the CLA."
+          custom-allsigned-prcomment: "🎉 All contributors have signed the CLA."
