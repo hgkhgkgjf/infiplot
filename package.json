@@ -21,6 +21,7 @@
     "deploy:cf": "opennextjs-cloudflare deploy"
   },
   "dependencies": {
+    "@fortawesome/fontawesome-free": "6.5.1",
     "@supabase/ssr": "^0.12",
     "@supabase/supabase-js": "^2.108",
     "drizzle-orm": "^0.45.2",

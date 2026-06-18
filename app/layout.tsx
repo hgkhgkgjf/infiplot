@@ -5,6 +5,7 @@ import { Analytics } from "@/components/Analytics";
 import { LOCALES, DEFAULT_LOCALE, type Locale } from "@/lib/i18n/config";
 import { localePath } from "@/lib/i18n/navigation";
 import { stripLocalePrefix } from "@/lib/i18n/navigation";
+import "@fortawesome/fontawesome-free/css/all.min.css";
 import "./globals.css";
 
 // Editorial fonts: drive tailwind `font-serif`/`font-sans` via
@@ -61,11 +62,6 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <head>
-        {/* Font Awesome — fa-solid icons used by home, /play, /new, CustomForm. */}
-        <link
-          rel="stylesheet"
-          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"
-        />
         {LOCALES.map((l) => (
           <link
             key={l}
