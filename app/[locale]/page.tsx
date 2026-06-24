@@ -2155,6 +2155,18 @@ export default function HomePage() {
         </div>
       </footer>
 
+      {/* ================== 反馈悬浮按钮 ================== */}
+      <a
+        href="https://tally.so/r/VLqO1M"
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={t("home.ui.feedback")}
+        className="fixed right-5 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] z-50 flex items-center gap-2 rounded-full bg-ember-500 pl-3.5 pr-4 py-2.5 text-sm text-cream-50 shadow-lg transition-all hover:bg-clay-800 active:scale-95"
+      >
+        <i className="fa-solid fa-comment-dots text-[13px]" />
+        <span className="font-sans tracking-wide">{t("home.ui.feedback")}</span>
+      </a>
+
       {styleOpen && styleRow >= 0 && (
         <StyleModal
           items={OPTS[styleRow]!.items}
