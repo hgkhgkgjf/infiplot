@@ -119,6 +119,7 @@ export const en = {
       save: "Save",
       cancel: "Cancel",
       saveAndSelect: "Save and Select",
+      feedback: "Feedback",
     },
 
     styleModal: {

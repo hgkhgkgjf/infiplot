@@ -130,6 +130,7 @@ export const zhCN = {
       save: "保存",
       cancel: "取消",
       saveAndSelect: "保存并选用",
+      feedback: "反馈",
     },
 
     // Style modal

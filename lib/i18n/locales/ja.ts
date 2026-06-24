@@ -130,6 +130,7 @@ export const ja = {
       save: "保存",
       cancel: "キャンセル",
       saveAndSelect: "保存して適用",
+      feedback: "フィードバック",
     },
 
     // Style modal
