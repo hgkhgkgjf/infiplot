@@ -123,29 +123,13 @@ const OPTS: Opt[] = [
 
 type StoryContent = { title: string; outline: string; style: string; tags: string[] };
 
-// 首页卡片的统一渲染形态——无论来自 D1 featured API 还是硬编码 STORIES 降级，
-// 都归一到这个形状后只走一条渲染路径。
+// 首页卡片的统一渲染形态。卡片来自硬编码 STORIES（buildFallbackCards），
+// 按当前 locale 本地化后渲染。
 type FeaturedCard = {
   id: string;        // e.g. "m0" / "f12"，用于 ?card= 与封面拼接
   title: string;
   outline: string;
   coverPath: string; // e.g. "/home/m0.webp"
-};
-
-// D1 featured API 的响应行（与 lib/db/schema.ts FeaturedStory 对应的线上子集）。
-type FeaturedStoryRow = {
-  id: string;
-  gender: string;
-  title: string;
-  outline: string;
-  style: string;
-  tags: string;       // JSON 字符串
-  coverPath: string;
-  firstactPath: string;
-  firstscenePath?: string | null;
-  sortOrder: number;
-  isActive: number;
-  clickCount: number;
 };
 
 import { STYLE_MAP } from "@/lib/options";
@@ -798,8 +782,8 @@ const DISPLAY_ORDER: Record<Gender, number[]> = {
   ],
 };
 
-// 从硬编码 STORIES + DISPLAY_ORDER 构造首页卡片（featured API 故障/空时的降级源，
-// 同时作为首屏即时渲染的初始值，避免等 fetch 期间卡片区空白）。
+// 从硬编码 STORIES + DISPLAY_ORDER 构造首页卡片（卡片的唯一数据源，经
+// localizeCards 三语本地化；惰性初始化为首屏即时渲染初始值，无需任何 fetch）。
 function buildFallbackCards(g: Gender): FeaturedCard[] {
   const imgPrefix = g === "女性向" ? "f" : "m";
   const localStories = STORIES[g];
@@ -1532,8 +1516,8 @@ export default function HomePage() {
     return () => clearTimeout(t);
   }, [gender, galleryGender]);
 
-  // Featured stories 动态加载（从 /api/stories/featured），降级用硬编码 STORIES。
-  // 惰性初始化确保首屏即有卡片内容（SSR + hydration 一致），fetch 成功后无缝替换。
+  // Featured 卡片来自硬编码 STORIES 的本地化结果。惰性初始化确保首屏即有内容
+  //（SSR + hydration 一致），locale/gender 变化时重算本地化。
   const storiesI18nRef = useRef<{ locale: string; data: StoriesI18n | null }>({ locale: "", data: null });
   const [featuredCards, setFeaturedCards] = useState<FeaturedCard[]>(() =>
     buildFallbackCards(galleryGender),
@@ -1546,34 +1530,11 @@ export default function HomePage() {
       }
       const i18n = storiesI18nRef.current.data;
       if (cancelled) return;
-
-      const apiGender = galleryGender === "女性向" ? "female" : "male";
-      try {
-        const r = await fetch(`/api/stories/featured?gender=${apiGender}`);
-        const data: { stories: FeaturedStoryRow[] } = await r.json();
-        // API 已按 sortOrder 排序且仅返回 isActive=1 的记录。
-        // D1 故障时 featured route 返回 { stories: [] }（HTTP 200），
-        // 空数组也必须降级到常量，否则首页白屏。
-        const rows = data.stories ?? [];
-        if (cancelled) return;
-        if (rows.length === 0) {
-          setFeaturedCards(localizeCards(buildFallbackCards(galleryGender), i18n));
-          return;
-        }
-        setFeaturedCards(
-          localizeCards(
-            rows.map((s) => ({
-              id: s.id,
-              title: s.title,
-              outline: s.outline,
-              coverPath: s.coverPath,
-            })),
-            i18n,
-          ),
-        );
-      } catch {
-        if (!cancelled) setFeaturedCards(localizeCards(buildFallbackCards(galleryGender), i18n));
-      }
+      // Featured cards come from the hardcoded fallback set (buildFallbackCards),
+      // localized for the active locale. The D1 /api/stories/featured route was
+      // removed — it had no real data and always degraded to this fallback, so
+      // this is behavior-identical with one fewer network round-trip.
+      setFeaturedCards(localizeCards(buildFallbackCards(galleryGender), i18n));
     })();
     return () => { cancelled = true; };
   }, [galleryGender, locale]);
@@ -1878,8 +1839,17 @@ export default function HomePage() {
         </span>
         <div className="flex items-center gap-4 md:gap-5">
           <LanguageSwitcher variant="compact" />
-          {/* Story persistence UI hidden until auth integration is ready.
-             Code in app/stories/, app/api/stories/, lib/db/ is retained. */}
+          {/* "我的剧情" — entry to the browser-local story list (IndexedDB).
+             Needs no auth; the /[locale]/stories page reads the local store. */}
+          <button
+            type="button"
+            onClick={() => router.push(lp("/stories"))}
+            aria-label={t("home.ui.myStories")}
+            title={t("home.ui.myStories")}
+            className="text-base text-clay-500 hover:text-ember-500 transition-colors"
+          >
+            <i className="fa-solid fa-book" />
+          </button>
           <button
             type="button"
             onClick={() => {
