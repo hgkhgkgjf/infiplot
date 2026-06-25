@@ -16,7 +16,7 @@
 -- dropped-then-created (Postgres has no `create policy if not exists`).
 
 create table if not exists public.stories (
-  id            text primary key,                                  -- = Session.id ("s_xxx"), shared with the local record
+  id            text not null,                                     -- = Session.id ("s_xxx"), unique only per user
   user_id       uuid not null references auth.users (id) on delete cascade,
   world_setting text not null default '',
   style_guide   text not null default '',
@@ -26,7 +26,11 @@ create table if not exists public.stories (
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
   deleted_at    timestamptz,                                       -- soft-delete tombstone; null = live
-  session_jsonb jsonb not null                                     -- slim Session blob (voice + styleReferenceImage stripped)
+  session_jsonb jsonb not null,                                    -- slim Session blob (voice + styleReferenceImage stripped)
+  -- Composite PK: a random Session.id ("s_xxx") is unique only within a user, so
+  -- scope the key by user_id — otherwise a cross-user id collision would reject
+  -- the second user's save with a PK violation.
+  primary key (user_id, id)
 );
 
 -- List query path: a user's stories newest-first.

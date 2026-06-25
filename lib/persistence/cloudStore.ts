@@ -122,7 +122,7 @@ export async function cloudSaveStory(
           deleted_at: null,
           session_jsonb: blob.session,
         },
-        { onConflict: "id" },
+        { onConflict: "user_id,id" },
       )
       .select()
       .single();
@@ -163,9 +163,13 @@ export async function cloudListStories(): Promise<StoryMeta[]> {
   if (!userId) return [];
   try {
     const supabase = await createClient();
+    // Explicit column list (not select()) so the list query doesn't pull the
+    // bulky session_jsonb — rowToMeta only needs the denormalized metadata.
     const { data, error } = await supabase
       .from("stories")
-      .select()
+      .select(
+        "id, world_setting, style_guide, orientation, scene_count, created_at, updated_at",
+      )
       .eq("user_id", userId)
       .is("deleted_at", null)
       .order("updated_at", { ascending: false });

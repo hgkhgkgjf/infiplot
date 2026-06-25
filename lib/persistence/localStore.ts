@@ -82,8 +82,9 @@ async function enforceRetentionCap(): Promise<void> {
       // Keep records that still owe the cloud a push (pending edits/soft-deletes
       // or a synced baseline) — hard-deleting them would lose that work silently.
       if (r.syncState !== "local-only") continue;
-      await idbDelete(STORIES_STORE, r.id);
-      overflow--;
+      // Only count a slot freed when the delete actually succeeded — a failed
+      // best-effort delete must not decrement overflow (would under-evict).
+      if (await idbDelete(STORIES_STORE, r.id)) overflow--;
     }
 
     // 3. Last-resort: if step 2 couldn't reach the cap, every remaining over-cap
@@ -101,8 +102,7 @@ async function enforceRetentionCap(): Promise<void> {
       for (const r of live) {
         if (overflow <= 0) break;
         if (r.syncState === "local-only") continue; // already evicted in step 2
-        await idbDelete(STORIES_STORE, r.id);
-        overflow--;
+        if (await idbDelete(STORIES_STORE, r.id)) overflow--;
       }
     }
   } catch {
