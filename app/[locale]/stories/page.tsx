@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { loadStoryList, deleteStory } from "@/lib/clientStoryPersistence";
-import type { StoryMeta } from "@/lib/db/repositories/storyRepo";
+import type { StoryMeta } from "@/lib/persistence/types";
+import { coerceEpoch } from "@/lib/persistence/types";
 import { useLocalePath } from "@/lib/i18n/hooks";
+import { useI18n } from "@/lib/i18n/client";
 
 export default function StoriesPage() {
   const lp = useLocalePath();
+  const { t, locale } = useI18n();
   const [stories, setStories] = useState<StoryMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -20,7 +23,7 @@ export default function StoriesPage() {
   }, []);
 
   const handleDelete = async (storyId: string) => {
-    if (!confirm("确认删除这个剧情？此操作无法撤销。")) return;
+    if (!confirm(t("stories.deleteConfirm"))) return;
 
     setDeletingId(storyId);
     const success = await deleteStory(storyId);
@@ -28,30 +31,31 @@ export default function StoriesPage() {
     if (success) {
       setStories((prev) => prev.filter((s) => s.id !== storyId));
     } else {
-      alert("删除失败，请稍后重试");
+      alert(t("stories.deleteFailed"));
     }
 
     setDeletingId(null);
   };
 
-  // D1 timestamps arrive as ISO strings over the JSON API boundary (the
-  // server-side Date is serialized by NextResponse.json), so coerce before use.
+  // Story timestamps cross the storage boundary as epoch ms (the local store
+  // coerces them); coerceEpoch is the shared guard for any legacy string/Date.
   const formatDate = (value: Date | string | number) => {
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
+    const ms = coerceEpoch(value, NaN);
+    if (Number.isNaN(ms)) return "";
+    const date = new Date(ms);
 
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-    if (days === 0) return "今天";
-    if (days === 1) return "昨天";
-    if (days < 7) return `${days} 天前`;
+    if (days === 0) return t("stories.today");
+    if (days === 1) return t("stories.yesterday");
+    if (days < 7) return t("stories.daysAgo", { days });
 
-    return date.toLocaleDateString("zh-CN", {
+    return date.toLocaleDateString(locale, {
       year: "numeric",
       month: "2-digit",
-      day: "2-digit"
+      day: "2-digit",
     });
   };
 
@@ -67,7 +71,7 @@ export default function StoriesPage() {
           InfiPlot
         </Link>
         <span className="text-[10px] smallcaps text-clay-500">
-          我 · 的 · 剧 · 情
+          {t("stories.title")}
         </span>
       </header>
 
@@ -76,20 +80,20 @@ export default function StoriesPage() {
         {loading ? (
           <div className="flex items-center justify-center min-h-[40vh]">
             <p className="text-[10px] smallcaps text-clay-500 animate-slow-pulse">
-              载 · 入 · 中
+              {t("stories.loading")}
             </p>
           </div>
         ) : stories.length === 0 ? (
           <div className="flex flex-col items-center justify-center min-h-[40vh] text-center">
             <i className="fa-solid fa-book-open text-4xl text-clay-300 mb-6" />
             <p className="font-serif italic text-lg text-clay-500 mb-4">
-              还没有保存的剧情
+              {t("stories.emptyTitle")}
             </p>
             <Link
               href={lp("/")}
               className="text-[10px] smallcaps text-clay-700 hover:text-ember-500 transition-colors cursor-pointer"
             >
-              回到首页开始新的故事
+              {t("stories.emptyBack")}
             </Link>
           </div>
         ) : (
@@ -117,7 +121,7 @@ export default function StoriesPage() {
                     <div className="flex items-center gap-3 text-[10px] smallcaps text-clay-500">
                       <span className="flex items-center gap-1">
                         <i className="fa-solid fa-photo-film text-[9px]" />
-                        {story.sceneCount} 幕
+                        {t("stories.scenes", { count: story.sceneCount })}
                       </span>
                       <span className="flex items-center gap-1">
                         <i className="fa-solid fa-clock text-[9px]" />
@@ -134,7 +138,7 @@ export default function StoriesPage() {
                       handleDelete(story.id);
                     }}
                     disabled={deletingId === story.id}
-                    aria-label="删除"
+                    aria-label={t("stories.deleteLabel")}
                     className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity text-clay-400 hover:text-ember-500 disabled:opacity-50 cursor-pointer"
                   >
                     <i className={deletingId === story.id ? "fa-solid fa-spinner fa-spin" : "fa-solid fa-trash-can"} />
@@ -151,7 +155,7 @@ export default function StoriesPage() {
         <div className="hairline-full w-full mb-4" />
         <div className="flex items-center justify-between text-[10px] smallcaps text-clay-500">
           <span>MMXXVI</span>
-          <span className="num">{stories.length} 个剧情</span>
+          <span className="num">{t("stories.storiesCount", { count: stories.length })}</span>
         </div>
       </footer>
     </div>

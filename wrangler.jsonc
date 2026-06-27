@@ -59,34 +59,8 @@
   //
   // See .dev.vars.example for a full reference of all variables.
   // ────────────────────────────────────────────────────────────────────
-
-  // ── Cloudflare D1 database (story persistence — optional) ───────────
-  // Not required for core gameplay. Uncomment and fill in your ID if needed:
-  //   wrangler d1 create infiplot-db
-  // "d1_databases": [
-  //   {
-  //     "binding": "DB",
-  //     "database_name": "infiplot-db",
-  //     "database_id": "<your-d1-database-id>"
-  //   }
-  // ],
-
-  // ── Cloudflare R2 bucket (asset storage — optional) ─────────────────
-  // Not required for core gameplay. Uncomment if needed:
-  //   wrangler r2 bucket create infiplot-assets
-  // "r2_buckets": [
-  //   {
-  //     "binding": "R2_BUCKET",
-  //     "bucket_name": "infiplot-assets"
-  //   }
-  // ],
-
-  // ── Cloudflare KV namespace (reserved for future use) ───────────────
-  // Uncomment if needed: wrangler kv namespace create KV
-  // "kv_namespaces": [
-  //   {
-  //     "binding": "KV",
-  //     "id": "<your-kv-namespace-id>"
-  //   }
-  // ]
+  //
+  // Story persistence is browser-local (IndexedDB) in the open-source build and
+  // Supabase (Postgres) in the commercial build — no Cloudflare D1/R2/KV
+  // bindings are used.
 }

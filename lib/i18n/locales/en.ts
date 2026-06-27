@@ -112,6 +112,7 @@ export const en = {
       start: "Start",
       loadStory: "Load Story",
       settings: "Settings",
+      myStories: "My Stories",
       searchPlaceholder: "Search styles…",
       noMatchingStyle: "No matching styles",
       close: "Close",
@@ -387,6 +388,22 @@ Dreamy watercolor style with soft tones and nostalgic atmosphere
     title: "Language",
     current: "Current Language",
     select: "Select Language",
+  },
+
+  // ========== Stories Page (app/[locale]/stories/page.tsx) ==========
+  stories: {
+    title: "M y · S t o r i e s",
+    loading: "L o a d i n g",
+    emptyTitle: "No saved stories yet",
+    emptyBack: "Go back home to start a new story",
+    scenes: "{count} scenes",
+    deleteLabel: "Delete",
+    deleteConfirm: "Delete this story? This action cannot be undone.",
+    deleteFailed: "Delete failed. Please try again later.",
+    today: "Today",
+    yesterday: "Yesterday",
+    daysAgo: "{days} days ago",
+    storiesCount: "{count} stories",
   },
 } as const;
 

@@ -21,7 +21,7 @@ import { SettingsModal, readStoredPlayerName, readStoredVisionClick } from "@/co
 import { annotateClick } from "@/lib/annotateClient";
 import { loadClientTtsConfig } from "@/lib/clientTtsConfig";
 import { collectBeatAudioForExport } from "@/lib/exportAudio";
-import { loadFromLocalStorage } from "@/lib/clientStoryPersistence";
+import { saveStory, loadStorySession } from "@/lib/clientStoryPersistence";
 import { PRESETS } from "@/lib/presets";
 import {
   STORY_SHARE_STORAGE_KEY,
@@ -52,6 +52,7 @@ import type {
   TtsConfig,
   TtsProvider,
 } from "@infiplot/types";
+import { coerceOrientation } from "@infiplot/types";
 import { track } from "@/lib/analytics";
 import { AUTH_ENABLED } from "@/lib/supabase/config";
 import { writeResumeSnapshot, consumeResumeSnapshot } from "@/lib/authResume";
@@ -480,7 +481,7 @@ function prefetchScenePath(
       source: "prefetch" as const,
       kind,
       http_status,
-      orientation: baseSession.orientation ?? "landscape",
+      orientation: coerceOrientation(baseSession.orientation),
       connection: getConnectionType(),
       was_hidden: typeof document !== "undefined" && document.visibilityState === "hidden",
       scene_index: baseSession.history.length,
@@ -711,7 +712,7 @@ function PlayInner() {
       session: sess,
       beatId: beat.id,
       visitedBeats: [...visitedBeatsRef.current],
-      orientation: sess.orientation ?? "landscape",
+      orientation: coerceOrientation(sess.orientation),
       imageOriginalUrl,
       pendingAction: pendingResumeActionRef.current ?? undefined,
     };
@@ -850,6 +851,62 @@ function PlayInner() {
 
   useEffect(() => {
     sessionRef.current = session;
+  }, [session]);
+  // Autosave bookkeeping. We persist on a stable FINGERPRINT of the durable,
+  // session-level state — committed-scene count + playerName — not the raw
+  // `session` reference, which churns on every beat advance (visitedBeatIds).
+  //  - lastSavedFingerprintRef holds the fingerprint of the last SUCCESSFUL save.
+  //    On failure it's cleared so the next session change retries: a
+  //    fire-and-forget that silently failed (IndexedDB transiently unavailable)
+  //    must not strand the scene unsaved.
+  //  - saveChainRef serializes writes so a slow save for scene N can't land after
+  //    a faster save for N+1 and persist a stale, shorter session.
+  const lastSavedFingerprintRef = useRef("");
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
+  // Persist to the browser-local store when the durable state changes (Req 2.1).
+  // Fingerprint = committed-scene count + last-scene beat count + playerName:
+  //  - scene count grows on a normal scene commit;
+  //  - last-scene beat count grows on an insert-beat (freeform / background-click
+  //    appends a beat to the current scene WITHOUT changing history.length), which
+  //    is real generated narrative that must persist — keying on length alone
+  //    would silently drop it;
+  //  - playerName captures a late rename.
+  // Within-scene *visited* progress (visitedBeatIds) is deliberately NOT in the
+  // fingerprint, so merely advancing through existing beats doesn't re-save. The
+  // resume path primes the fingerprint so loading a story stays a pure read (no
+  // re-save / rev bump / list reorder). No debounce — the write is issued on the
+  // committing render, so navigating home right after a change can't drop it (the
+  // IndexedDB put is already in flight, serialized, not cancelled by unmount).
+  // Fire-and-forget: never blocks.
+  useEffect(() => {
+    // Never persist a replayed shared story into the user's own library — it
+    // isn't theirs and its id can collide with (and clobber) a real local save.
+    // Guard on replaySourceRef (set unconditionally on import, cleared by
+    // detachRecordedReplay when the user takes over) — NOT replayActiveRef, which
+    // means "more recorded scenes remain" and is false for a single-scene share,
+    // so that share would otherwise slip through and overwrite a real save.
+    if (!session || replaySourceRef.current) return;
+    const history = session.history ?? [];
+    if (history.length < 1) return;
+    const lastBeatCount = history[history.length - 1]?.scene?.beats?.length ?? 0;
+    const fingerprint = `${history.length}:${lastBeatCount}:${session.playerName ?? ""}`;
+    if (fingerprint === lastSavedFingerprintRef.current) return;
+    lastSavedFingerprintRef.current = fingerprint; // optimistic; rolled back on failure
+    const snapshot = session;
+    saveChainRef.current = saveChainRef.current
+      .then(async () => {
+        const r = await saveStory(snapshot);
+        // Roll back only if no newer save has superseded us, so the next session
+        // change retries this content instead of the failure being permanent.
+        if (!r.ok && lastSavedFingerprintRef.current === fingerprint) {
+          lastSavedFingerprintRef.current = "";
+        }
+      })
+      .catch(() => {
+        if (lastSavedFingerprintRef.current === fingerprint) {
+          lastSavedFingerprintRef.current = "";
+        }
+      });
   }, [session]);
   useEffect(() => {
     currentSceneRef.current = currentScene;
@@ -1382,7 +1439,7 @@ function PlayInner() {
       v: audioByBeatId && Object.keys(audioByBeatId).length > 0 ? 3 : 2,
       id,
       createdAt: Date.now(),
-      orientation: s.orientation ?? "landscape",
+      orientation: coerceOrientation(s.orientation),
       scenes,
       alternates,
       characters,
@@ -1712,27 +1769,50 @@ function PlayInner() {
 
     // ── Load saved story path ──
     if (storyId) {
-      // TEMPORARY: localStorage-only mode (D1 disabled until auth integration)
-      const loadedSession = loadFromLocalStorage(storyId);
-      if (!loadedSession) {
-        setError(t("play.savedStoryNotFound"));
-        return;
-      }
-      const firstScene = loadedSession.history[0]?.scene;
-      if (!firstScene) {
-        setError(t("play.savedStoryCorrupted"));
-        return;
-      }
       (async () => {
+        // Browser-local store (IndexedDB) is async; load inside the IIFE.
+        const loadedSession = await loadStorySession(storyId);
+        if (!loadedSession) {
+          setError(t("play.savedStoryNotFound"));
+          return;
+        }
+        // Resume at the player's last position. Walk from the newest scene back
+        // to the first and resume at the latest one that actually has a rendered
+        // image: the final scene → correct position; if the very last scene
+        // failed to image (committed without one), a small rewind beats a blank
+        // canvas (Req 3.3). If NO scene has an image the story can't render —
+        // surface savedStoryCorrupted instead of landing on getOrCreateBlobUrl("").
+        const history = loadedSession.history;
+        let resumeEntry = history[history.length - 1];
+        for (let i = history.length - 1; i >= 0; i--) {
+          if (history[i]?.scene?.imageUrl) {
+            resumeEntry = history[i];
+            break;
+          }
+        }
+        const resumeScene = resumeEntry?.scene;
+        if (!resumeScene?.imageUrl) {
+          setError(t("play.savedStoryCorrupted"));
+          return;
+        }
+        // Pure read: prime the autosave fingerprint so loading doesn't re-save /
+        // bump rev / reorder the list. Must match the effect's fingerprint shape
+        // exactly (scene count + last-scene beat count + playerName) or the first
+        // render would re-persist.
+        {
+          const lastBeatCount =
+            history[history.length - 1]?.scene?.beats?.length ?? 0;
+          lastSavedFingerprintRef.current = `${history.length}:${lastBeatCount}:${loadedSession.playerName ?? ""}`;
+        }
         try {
-          const blobUrl = await getOrCreateBlobUrl(firstScene.imageUrl ?? "");
-          lastImageOriginalUrlRef.current = firstScene.imageUrl ?? "";
+          const blobUrl = await getOrCreateBlobUrl(resumeScene.imageUrl);
+          lastImageOriginalUrlRef.current = resumeScene.imageUrl;
           setSession(loadedSession);
-          setCurrentScene(firstScene);
-          setCurrentBeatId(firstScene.entryBeatId);
+          setCurrentScene(resumeScene);
+          setCurrentBeatId(resumeScene.entryBeatId);
           setImageUrl(blobUrl);
-          visitedBeatsRef.current = [firstScene.entryBeatId];
-          setOrientation(loadedSession.orientation ?? "landscape");
+          visitedBeatsRef.current = [resumeScene.entryBeatId];
+          setOrientation(coerceOrientation(loadedSession.orientation));
           setPhase("ready");
           track("scene_reached", { scene_index: loadedSession.history.length });
         } catch (e) {
@@ -2238,7 +2318,10 @@ function PlayInner() {
 
   async function onFreeformInput(text: string) {
     if (phase !== "ready" || !session || !currentScene) return;
-    if (replayActiveRef.current) detachRecordedReplay();
+    // Detach if we're still replaying a shared story (gate on replaySourceRef,
+    // not replayActiveRef — the latter is false for a single-scene share, which
+    // would otherwise leave us "stuck" in replay and block autosave forever).
+    if (replaySourceRef.current) detachRecordedReplay();
 
     track("freeform_input", {
       scene_index: session.history.length,
@@ -2295,7 +2378,9 @@ function PlayInner() {
 
   async function onBackgroundClick(click: { x: number; y: number }) {
     if (phase !== "ready" || !session || !currentScene || !imageUrl) return;
-    if (replayActiveRef.current) detachRecordedReplay();
+    // Gate on replaySourceRef, not replayActiveRef (false for a single-scene
+    // share) — see onFreeformInput for the rationale.
+    if (replaySourceRef.current) detachRecordedReplay();
     const visionT0 = Date.now();
     setPhase("vision-thinking");
     setPendingClick(click);

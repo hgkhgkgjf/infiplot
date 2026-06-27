@@ -123,6 +123,7 @@ export const zhCN = {
       start: "开始",
       loadStory: "载入剧情",
       settings: "设置",
+      myStories: "我的剧情",
       searchPlaceholder: "搜索风格…",
       noMatchingStyle: "没有匹配的风格",
       close: "关闭",
@@ -427,6 +428,22 @@ export const zhCN = {
     title: "语言",
     current: "当前语言",
     select: "选择语言",
+  },
+
+  // ========== Stories Page (app/[locale]/stories/page.tsx) ==========
+  stories: {
+    title: "我 · 的 · 剧 · 情",
+    loading: "载 · 入 · 中",
+    emptyTitle: "还没有保存的剧情",
+    emptyBack: "回到首页开始新的故事",
+    scenes: "{count} 幕",
+    deleteLabel: "删除",
+    deleteConfirm: "确认删除这个剧情？此操作无法撤销。",
+    deleteFailed: "删除失败，请稍后重试",
+    today: "今天",
+    yesterday: "昨天",
+    daysAgo: "{days} 天前",
+    storiesCount: "{count} 个剧情",
   },
 } as const;
 
