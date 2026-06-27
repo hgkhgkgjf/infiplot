@@ -902,10 +902,11 @@ function PlayInner() {
           lastSavedFingerprintRef.current = "";
         }
       })
-      // Defensive: saveStory is contracted never to throw, but if a future edit
-      // to this callback ever does, an unhandled rejection here would poison the
-      // chain and freeze ALL subsequent saves. Swallow to keep the chain alive.
-      .catch(() => {});
+      .catch(() => {
+        if (lastSavedFingerprintRef.current === fingerprint) {
+          lastSavedFingerprintRef.current = "";
+        }
+      });
   }, [session]);
   useEffect(() => {
     currentSceneRef.current = currentScene;

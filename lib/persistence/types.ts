@@ -19,12 +19,13 @@ export const STORY_SCHEMA_VERSION = 1;
  *  crosses a storage/serialization boundary and could arrive as a non-number,
  *  guarding against the historical `t.getTime is not a function` white-screen. */
 export function coerceEpoch(value: unknown, fallback: number): number {
+  if (value == null) return fallback;
   // Number.isFinite (not just !isNaN) so ±Infinity also falls through to the
   // fallback — new Date(Infinity).getTime() is NaN, not a usable epoch.
   if (typeof value === "number" && Number.isFinite(value)) return value;
   const d = value instanceof Date ? value : new Date(value as string | number);
   const t = d.getTime();
-  return Number.isNaN(t) ? fallback : t;
+  return Number.isFinite(t) ? t : fallback;
 }
 
 /** local-first sync state of a record.
