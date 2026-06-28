@@ -123,6 +123,7 @@ export const ja = {
       start: "スタート",
       loadStory: "シナリオ読み込み",
       settings: "設定",
+      myStories: "マイストーリー",
       searchPlaceholder: "スタイルを検索…",
       noMatchingStyle: "一致するスタイルがありません",
       close: "閉じる",
@@ -427,6 +428,22 @@ export const ja = {
     title: "言語",
     current: "現在の言語",
     select: "言語の選択",
+  },
+
+  // ========== Stories Page (app/[locale]/stories/page.tsx) ==========
+  stories: {
+    title: "マ イ ス ト ー リ ー",
+    loading: "読 み 込 み 中",
+    emptyTitle: "保存されたストーリーはまだありません",
+    emptyBack: "ホームに戻って新しいストーリーを始める",
+    scenes: "{count}シーン",
+    deleteLabel: "削除",
+    deleteConfirm: "このストーリーを削除しますか？この操作は元に戻せません。",
+    deleteFailed: "削除に失敗しました。後でもう一度お試しください。",
+    today: "今日",
+    yesterday: "昨日",
+    daysAgo: "{days}日前",
+    storiesCount: "{count}件",
   },
 } as const;
 

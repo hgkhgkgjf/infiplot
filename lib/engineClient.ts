@@ -10,6 +10,7 @@ import {
   resolveEngineConfig,
 } from "@/lib/clientModelConfig";
 import { loadClientTtsConfig } from "@/lib/clientTtsConfig";
+import { stripSessionVoices } from "@/lib/persistence/sessionSlim";
 import type {
   Character,
   FreeformClassifyRequest,
@@ -78,16 +79,11 @@ async function getJson<T>(path: string): Promise<T> {
 // data is bulky (~160KB/character via referenceAudioBase64) and the
 // scene-generation / vision / classify pipelines never need it — voices
 // are only consumed by /api/beat-audio, which receives them directly, not
-// via the session. So strip voices before transport.
+// via the session. So strip voices before transport. The stripping rule itself
+// lives in lib/persistence/sessionSlim.ts (shared with the local-store layer so
+// "what counts as voice" has one definition).
 function stripVoicesForTransport(session: Session): Session {
-  return {
-    ...session,
-    // Destructure voice out so the serialized payload drops the field
-    // entirely (voice is optional on Character), rather than serializing
-    // it as undefined/null. This is the ~160KB/character referenceAudioBase64
-    // we want off the wire on the server-fallback path.
-    characters: session.characters.map(({ voice: _voice, ...rest }) => rest),
-  };
+  return stripSessionVoices(session);
 }
 
 // The server strips voice from already-known characters before responding
